@@ -1,0 +1,19 @@
+[project]
+name = "componentize"
+version = "0.1.0"
+description = "AI-powered visual component builder backend"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic==0.42.0",
+    "flask==3.1.0",
+    "flask-cors==5.0.0",
+    "python-dotenv==1.0.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []
