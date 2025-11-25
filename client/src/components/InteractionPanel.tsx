@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Zap, Plus, Trash2, Loader2, Code2, Edit3, Eye } from 'lucide-react';
-import { generateInteraction, editComponent, getComponentCode } from '../lib/api';
+import { generateInteractionStream, editComponentStream, getComponentCode } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
 import type { Interaction } from '../types/index';
 
@@ -15,6 +15,7 @@ export function InteractionPanel({ componentId, componentName, interactions = []
   const [description, setDescription] = useState('');
   const [eventType, setEventType] = useState<'onClick' | 'onChange' | 'onSubmit'>('onClick');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const [expandedCode, setExpandedCode] = useState<string | null>(null);
 
@@ -22,6 +23,7 @@ export function InteractionPanel({ componentId, componentName, interactions = []
   const [showEditForm, setShowEditForm] = useState(false);
   const [editDescription, setEditDescription] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [editProgress, setEditProgress] = useState('');
   const [editError, setEditError] = useState('');
   const [editSuccess, setEditSuccess] = useState('');
 
@@ -40,25 +42,33 @@ export function InteractionPanel({ componentId, componentName, interactions = []
     }
 
     setError('');
+    setProgress('');
     setIsGenerating(true);
 
     try {
-      const result = await generateInteraction(
+      for await (const event of generateInteractionStream(
         componentId,
         componentName,
         description,
         eventType
-      );
-
-      if (result.status === 'success' && result.interaction) {
-        addInteraction(componentId, result.interaction);
-        setDescription('');
-        setShowAddForm(false);
-      } else {
-        setError(result.message || 'Failed to generate interaction');
+      )) {
+        if (event.type === 'progress' || event.type === 'tool_call') {
+          setProgress(event.message);
+        } else if (event.type === 'success') {
+          if (event.data?.interaction) {
+            addInteraction(componentId, event.data.interaction);
+            setDescription('');
+            setShowAddForm(false);
+            setProgress('');
+          }
+        } else if (event.type === 'error') {
+          setError(event.message);
+          setProgress('');
+        }
       }
     } catch (err) {
       setError('Network error. Make sure the backend server is running on port 5001.');
+      setProgress('');
     } finally {
       setIsGenerating(false);
     }
@@ -76,26 +86,32 @@ export function InteractionPanel({ componentId, componentName, interactions = []
 
     setEditError('');
     setEditSuccess('');
+    setEditProgress('');
     setIsEditing(true);
 
     try {
-      const result = await editComponent(componentName, editDescription);
-
-      if (result.status === 'success') {
-        setEditSuccess(`Component '${componentName}' updated successfully!`);
-        setEditDescription('');
-        setShowEditForm(false);
-        // Refresh code if it's being shown
-        if (showCode) {
-          loadComponentCode();
+      for await (const event of editComponentStream(componentName, editDescription)) {
+        if (event.type === 'progress' || event.type === 'tool_call') {
+          setEditProgress(event.message);
+        } else if (event.type === 'success') {
+          setEditSuccess(`Component '${componentName}' updated successfully!`);
+          setEditProgress('');
+          setEditDescription('');
+          setShowEditForm(false);
+          // Refresh code if it's being shown
+          if (showCode) {
+            loadComponentCode();
+          }
+          // Clear success message after 3 seconds
+          setTimeout(() => setEditSuccess(''), 3000);
+        } else if (event.type === 'error') {
+          setEditError(event.message);
+          setEditProgress('');
         }
-        // Clear success message after 3 seconds
-        setTimeout(() => setEditSuccess(''), 3000);
-      } else {
-        setEditError(result.message || 'Failed to edit component');
       }
     } catch (err) {
       setEditError('Network error. Make sure the backend server is running on port 5001.');
+      setEditProgress('');
     } finally {
       setIsEditing(false);
     }
@@ -169,6 +185,12 @@ export function InteractionPanel({ componentId, componentName, interactions = []
               className="w-full px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               disabled={isEditing}
             />
+
+            {editProgress && (
+              <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                {editProgress}
+              </div>
+            )}
 
             {editError && (
               <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-800">
@@ -330,6 +352,12 @@ export function InteractionPanel({ componentId, componentName, interactions = []
                 disabled={isGenerating}
               />
             </div>
+
+            {progress && (
+              <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                {progress}
+              </div>
+            )}
 
             {error && (
               <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-800">

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Download, Check } from 'lucide-react';
-import { exportPage } from '../lib/api';
+import { exportPageAsZip } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
 
 export function ExportButton() {
@@ -21,28 +21,23 @@ export function ExportButton() {
     setExported(false);
 
     try {
-      const result = await exportPage('MyPage', {
+      // Export page as ZIP with all components and dependencies
+      const blob = await exportPageAsZip('MyPage', {
         components: canvasComponents,
       });
 
-      if (result.status === 'success' && result.code) {
-        // Download the file
-        const blob = new Blob([result.code], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${result.page_name}.tsx`;
-        a.click();
-        URL.revokeObjectURL(url);
+      // Download the ZIP file
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'MyPage.zip';
+      a.click();
+      URL.revokeObjectURL(url);
 
-        setExported(true);
-        setTimeout(() => setExported(false), 3000);
-      } else {
-        setError(result.message || 'Export failed');
-        setTimeout(() => setError(''), 3000);
-      }
+      setExported(true);
+      setTimeout(() => setExported(false), 3000);
     } catch (err) {
-      setError('Network error. Make sure the backend server is running.');
+      setError('Failed to export. Make sure the backend server is running.');
       setTimeout(() => setError(''), 3000);
     } finally {
       setIsExporting(false);

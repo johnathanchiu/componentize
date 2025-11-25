@@ -1,19 +1,20 @@
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { useState } from 'react';
+import { Settings } from 'lucide-react';
 import { ComponentGenerator } from './components/ComponentGenerator';
 import { ComponentLibrary } from './components/ComponentLibrary';
 import { DragDropCanvas } from './components/DragDropCanvas';
 import { ExportButton } from './components/ExportButton';
+import { PropertyPanel } from './components/PropertyPanel';
 import { useCanvasStore } from './store/canvasStore';
 
 function App() {
-  const { addToCanvas, updatePosition, canvasComponents } = useCanvasStore();
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const { addToCanvas, updatePosition, canvasComponents, selectedComponentId } = useCanvasStore();
   const [activeComponentName, setActiveComponentName] = useState<string | null>(null);
+  const [isPropertyPanelOpen, setIsPropertyPanelOpen] = useState(false);
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
     const componentName = event.active.data.current?.componentName;
     setActiveComponentName(componentName || null);
   };
@@ -21,7 +22,6 @@ function App() {
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over, delta } = event;
 
-    setActiveId(null);
     setActiveComponentName(null);
 
     if (!over) return;
@@ -68,7 +68,18 @@ function App() {
               Generate components with AI, drag and drop to build your page
             </p>
           </div>
-          <ExportButton />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsPropertyPanelOpen(!isPropertyPanelOpen)}
+              disabled={!selectedComponentId}
+              className="px-4 py-2 bg-gray-600 text-white rounded-md font-medium hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+              title={selectedComponentId ? 'Open properties panel' : 'Select a component first'}
+            >
+              <Settings className="w-4 h-4" />
+              Properties
+            </button>
+            <ExportButton />
+          </div>
         </header>
 
         {/* Main content */}
@@ -96,6 +107,12 @@ function App() {
           </div>
         ) : null}
       </DragOverlay>
+
+      {/* Property Panel */}
+      <PropertyPanel
+        isOpen={isPropertyPanelOpen}
+        onClose={() => setIsPropertyPanelOpen(false)}
+      />
     </DndContext>
   );
 }

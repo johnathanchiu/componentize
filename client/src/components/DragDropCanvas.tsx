@@ -7,7 +7,8 @@ import { InteractionPanel } from './InteractionPanel';
 import { Resizable } from 're-resizable';
 import type { Size } from '../types/index';
 import { useEffect, useState, useRef } from 'react';
-import { editComponent } from '../lib/api';
+import { editComponentStream } from '../lib/api';
+import { config } from '../config';
 
 interface CanvasItemProps {
   id: string;
@@ -56,53 +57,22 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onDel
     try {
       const errorDescription = `Fix this error in the component:\n\nError: ${componentError.message}\n\n${componentError.stack ? `Stack: ${componentError.stack}` : ''}`;
 
-      const response = await fetch('http://localhost:5001/api/edit-component-stream', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          componentName,
-          editDescription: errorDescription
-        }),
-      });
-
-      if (!response.body) {
-        throw new Error('No response body');
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = JSON.parse(line.slice(6));
-
-            if (data.type === 'progress') {
-              setFixProgress(data.message);
-            } else if (data.type === 'success') {
-              setFixProgress(data.message);
-              // Reload iframe to show fixed component
-              if (iframeRef.current) {
-                iframeRef.current.src = iframeRef.current.src;
-              }
-              setComponentError(null);
-              setTimeout(() => setFixProgress(''), 2000);
-            } else if (data.type === 'error') {
-              setFixProgress(`Error: ${data.message}`);
-            }
+      for await (const event of editComponentStream(componentName, errorDescription)) {
+        if (event.type === 'progress') {
+          setFixProgress(event.message);
+        } else if (event.type === 'success') {
+          setFixProgress(event.message);
+          // Reload iframe to show fixed component
+          if (iframeRef.current) {
+            iframeRef.current.src = iframeRef.current.src;
           }
+          setComponentError(null);
+          setTimeout(() => setFixProgress(''), 2000);
+        } else if (event.type === 'error') {
+          setFixProgress(`Error: ${event.message}`);
         }
       }
     } catch (err) {
-      console.error('Failed to fix errors:', err);
       setFixProgress('Failed to fix errors');
     } finally {
       setIsFixing(false);
@@ -139,7 +109,7 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onDel
 
       <Resizable
         size={defaultSize}
-        onResizeStop={(e, direction, ref, d) => {
+        onResizeStop={(_e, _direction, _ref, d) => {
           const newWidth = defaultSize.width + d.width;
           const newHeight = defaultSize.height + d.height;
           onResize(newWidth, newHeight);
@@ -189,7 +159,7 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onDel
         {/* Iframe rendering the actual component */}
         <iframe
           ref={iframeRef}
-          src={`http://localhost:5001/preview/${componentName}`}
+          src={`${config.apiBaseUrl}/preview/${componentName}`}
           className="w-full h-full border-none pointer-events-auto"
           sandbox="allow-scripts"
           title={`Preview of ${componentName}`}

@@ -1,18 +1,20 @@
 import type {
-  GenerateComponentResponse,
   ListComponentsResponse,
-  ExportPageResponse,
-  GenerateInteractionResponse,
   PageLayout,
+  StreamEvent,
 } from '../types/index';
+import { config } from '../config';
 
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_BASE_URL = `${config.apiBaseUrl}/api`;
 
-export async function generateComponent(
+/**
+ * Generate component with streaming progress
+ */
+export async function* generateComponentStream(
   prompt: string,
   componentName: string
-): Promise<GenerateComponentResponse> {
-  const response = await fetch(`${API_BASE_URL}/generate-component`, {
+): AsyncGenerator<StreamEvent> {
+  const response = await fetch(`${API_BASE_URL}/generate-component-stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -20,7 +22,26 @@ export async function generateComponent(
     body: JSON.stringify({ prompt, componentName }),
   });
 
-  return response.json();
+  if (!response.body) {
+    throw new Error('No response body');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value);
+    const lines = chunk.split('\n');
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        yield JSON.parse(line.slice(6)) as StreamEvent;
+      }
+    }
+  }
 }
 
 export async function listComponents(): Promise<ListComponentsResponse> {
@@ -28,10 +49,13 @@ export async function listComponents(): Promise<ListComponentsResponse> {
   return response.json();
 }
 
-export async function exportPage(
+/**
+ * Export page as ZIP file
+ */
+export async function exportPageAsZip(
   pageName: string,
   layout: PageLayout
-): Promise<ExportPageResponse> {
+): Promise<Blob> {
   const response = await fetch(`${API_BASE_URL}/export-page`, {
     method: 'POST',
     headers: {
@@ -40,16 +64,23 @@ export async function exportPage(
     body: JSON.stringify({ pageName, layout }),
   });
 
-  return response.json();
+  if (!response.ok) {
+    throw new Error('Failed to export page');
+  }
+
+  return response.blob();
 }
 
-export async function generateInteraction(
+/**
+ * Generate interaction with streaming progress
+ */
+export async function* generateInteractionStream(
   componentId: string,
   componentName: string,
   description: string,
   eventType: string
-): Promise<GenerateInteractionResponse> {
-  const response = await fetch(`${API_BASE_URL}/generate-interaction`, {
+): AsyncGenerator<StreamEvent> {
+  const response = await fetch(`${API_BASE_URL}/generate-interaction-stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -57,14 +88,36 @@ export async function generateInteraction(
     body: JSON.stringify({ componentId, componentName, description, eventType }),
   });
 
-  return response.json();
+  if (!response.body) {
+    throw new Error('No response body');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value);
+    const lines = chunk.split('\n');
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        yield JSON.parse(line.slice(6)) as StreamEvent;
+      }
+    }
+  }
 }
 
-export async function editComponent(
+/**
+ * Edit component with streaming progress
+ */
+export async function* editComponentStream(
   componentName: string,
   editDescription: string
-): Promise<APIResponse> {
-  const response = await fetch(`${API_BASE_URL}/edit-component`, {
+): AsyncGenerator<StreamEvent> {
+  const response = await fetch(`${API_BASE_URL}/edit-component-stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -72,7 +125,26 @@ export async function editComponent(
     body: JSON.stringify({ componentName, editDescription }),
   });
 
-  return response.json();
+  if (!response.body) {
+    throw new Error('No response body');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value);
+    const lines = chunk.split('\n');
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        yield JSON.parse(line.slice(6)) as StreamEvent;
+      }
+    }
+  }
 }
 
 export async function getComponentCode(componentName: string): Promise<any> {

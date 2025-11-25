@@ -64,3 +64,12 @@ export interface StateVariable {
 export interface GenerateInteractionResponse extends APIResponse {
   interaction?: Interaction;
 }
+
+// Streaming events
+export type StreamEventType = 'progress' | 'success' | 'error' | 'thinking' | 'tool_call';
+
+export interface StreamEvent {
+  type: StreamEventType;
+  message: string;
+  data?: any;
+}

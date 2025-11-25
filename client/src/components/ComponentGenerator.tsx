@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Wand2, Loader2 } from 'lucide-react';
-import { generateComponent } from '../lib/api';
+import { generateComponentStream } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
 
 export function ComponentGenerator() {
@@ -8,6 +8,7 @@ export function ComponentGenerator() {
   const [componentName, setComponentName] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [progress, setProgress] = useState('');
 
   const { isGenerating, setIsGenerating, addAvailableComponent } = useCanvasStore();
 
@@ -25,28 +26,37 @@ export function ComponentGenerator() {
 
     setError('');
     setSuccess('');
+    setProgress('');
     setIsGenerating(true);
 
     try {
-      const result = await generateComponent(prompt, componentName);
+      for await (const event of generateComponentStream(prompt, componentName)) {
+        if (event.type === 'progress' || event.type === 'tool_call') {
+          setProgress(event.message);
+        } else if (event.type === 'success') {
+          setSuccess(`Component '${componentName}' created successfully!`);
+          setProgress('');
 
-      if (result.status === 'success') {
-        setSuccess(`Component '${result.component_name}' created successfully!`);
+          // Add to available components
+          addAvailableComponent({
+            name: componentName,
+            filepath: '',
+          });
 
-        // Add to available components
-        addAvailableComponent({
-          name: result.component_name || componentName,
-          filepath: result.filepath || '',
-        });
-
-        // Clear form
-        setPrompt('');
-        setComponentName('');
-      } else {
-        setError(result.message || 'Failed to generate component');
+          // Clear form after delay
+          setTimeout(() => {
+            setPrompt('');
+            setComponentName('');
+            setSuccess('');
+          }, 2000);
+        } else if (event.type === 'error') {
+          setError(event.message);
+          setProgress('');
+        }
       }
     } catch (err) {
-      setError('Network error. Make sure the backend server is running on port 5000.');
+      setError('Network error. Make sure the backend server is running on port 5001.');
+      setProgress('');
     } finally {
       setIsGenerating(false);
     }
@@ -105,6 +115,12 @@ export function ComponentGenerator() {
             </>
           )}
         </button>
+
+        {progress && (
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-800">
+            {progress}
+          </div>
+        )}
 
         {error && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">
