@@ -67,11 +67,13 @@ server.post<{ Body: GenerateComponentRequest }>('/api/generate-component-stream'
     });
   }
 
-  // Set headers for Server-Sent Events
+  // Set headers for Server-Sent Events (including CORS)
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': request.headers.origin || '*',
+    'Access-Control-Allow-Credentials': 'true',
   });
 
   try {
@@ -101,10 +103,13 @@ server.post<{ Body: EditComponentRequest }>('/api/edit-component-stream', async 
     });
   }
 
+  // Set headers for Server-Sent Events (including CORS)
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': request.headers.origin || '*',
+    'Access-Control-Allow-Credentials': 'true',
   });
 
   try {
@@ -153,10 +158,13 @@ server.post<{ Body: GenerateInteractionRequest }>('/api/generate-interaction-str
     });
   }
 
+  // Set headers for Server-Sent Events (including CORS)
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': request.headers.origin || '*',
+    'Access-Control-Allow-Credentials': 'true',
   });
 
   try {
