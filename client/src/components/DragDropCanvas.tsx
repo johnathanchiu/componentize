@@ -1,5 +1,5 @@
 import { useDroppable } from '@dnd-kit/core';
-import { Trash2, AlertCircle, Wrench } from 'lucide-react';
+import { Trash2, AlertCircle, Wrench, Pencil } from 'lucide-react';
 import { useCanvasStore } from '../store/canvasStore';
 import { CSS } from '@dnd-kit/utilities';
 import { useDraggable } from '@dnd-kit/core';
@@ -17,13 +17,14 @@ interface CanvasItemProps {
   size?: Size;
   isSelected: boolean;
   onSelect: () => void;
+  onEdit: () => void;
   onDelete: () => void;
   onResize: (width: number, height: number) => void;
   onFix: (errorMessage: string, errorStack?: string) => void;
   interactions?: any[];
 }
 
-function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onDelete, onResize, onFix, interactions }: CanvasItemProps) {
+function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onEdit, onDelete, onResize, onFix, interactions }: CanvasItemProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `canvas-${id}`,
     data: { id, componentName, source: 'canvas' },
@@ -98,17 +99,31 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onDel
       className={`group ${isDragging ? 'opacity-70' : ''}`}
       onClick={onSelect}
     >
-      {/* Floating delete button - appears on hover, positioned at top right */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-        className="absolute -top-3 -right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-30 p-1.5 bg-red-600 hover:bg-red-700 rounded-full shadow-lg"
-        title="Remove component"
-      >
-        <Trash2 className="w-3.5 h-3.5 text-white" />
-      </button>
+      {/* Floating action buttons - appear on hover */}
+      <div className="absolute -top-3 -right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-30 flex gap-1">
+        {/* Edit button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          className="p-1.5 bg-blue-600 hover:bg-blue-700 rounded-full shadow-lg"
+          title="Edit component"
+        >
+          <Pencil className="w-3.5 h-3.5 text-white" />
+        </button>
+        {/* Delete button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="p-1.5 bg-red-600 hover:bg-red-700 rounded-full shadow-lg"
+          title="Remove component"
+        >
+          <Trash2 className="w-3.5 h-3.5 text-white" />
+        </button>
+      </div>
 
       <Resizable
         size={defaultSize}
@@ -227,11 +242,17 @@ export function DragDropCanvas() {
     removeFromCanvas,
     updateSize,
     startFixing,
+    startEditing,
   } = useCanvasStore();
 
   // Handler to start fixing a component with an error - auto-triggers fix
   const handleFix = (componentName: string, errorMessage: string, errorStack?: string) => {
     startFixing(componentName, { message: errorMessage, stack: errorStack });
+  };
+
+  // Handler to start editing a component
+  const handleEdit = (componentName: string) => {
+    startEditing(componentName);
   };
 
   return (
@@ -264,6 +285,7 @@ export function DragDropCanvas() {
               size={item.size}
               isSelected={selectedComponentId === item.id}
               onSelect={() => setSelectedComponentId(item.id)}
+              onEdit={() => handleEdit(item.componentName)}
               onDelete={() => removeFromCanvas(item.id)}
               onResize={(width, height) => updateSize(item.id, width, height)}
               onFix={(errorMessage, errorStack) => handleFix(item.componentName, errorMessage, errorStack)}

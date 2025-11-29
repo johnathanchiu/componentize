@@ -7,6 +7,7 @@ import { DragDropCanvas } from './components/DragDropCanvas';
 import { ExportButton } from './components/ExportButton';
 import { PropertyPanel } from './components/PropertyPanel';
 import { GenerationPanel } from './components/GenerationPanel';
+import { CodePreviewPanel } from './components/CodePreviewPanel';
 import { useCanvasStore } from './store/canvasStore';
 
 function App() {
@@ -90,6 +91,9 @@ function App() {
           <div className="flex-1 min-w-0">
             <DragDropCanvas />
           </div>
+
+          {/* Right panel - Code preview when editing */}
+          <CodePreviewPanel />
         </div>
 
         {/* Bottom panel - Generation interface */}
