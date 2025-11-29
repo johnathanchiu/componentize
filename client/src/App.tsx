@@ -1,19 +1,16 @@
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { useState } from 'react';
-import { Settings } from 'lucide-react';
 import { ComponentLibrary } from './components/ComponentLibrary';
 import { DragDropCanvas } from './components/DragDropCanvas';
 import { ExportButton } from './components/ExportButton';
-import { PropertyPanel } from './components/PropertyPanel';
 import { GenerationPanel } from './components/GenerationPanel';
 import { CodePreviewPanel } from './components/CodePreviewPanel';
 import { useCanvasStore } from './store/canvasStore';
 
 function App() {
-  const { addToCanvas, updatePosition, canvasComponents, selectedComponentId } = useCanvasStore();
+  const { addToCanvas, updatePosition, canvasComponents } = useCanvasStore();
   const [activeComponentName, setActiveComponentName] = useState<string | null>(null);
-  const [isPropertyPanelOpen, setIsPropertyPanelOpen] = useState(false);
 
   const handleDragStart = (event: DragStartEvent) => {
     const componentName = event.active.data.current?.componentName;
@@ -66,18 +63,7 @@ function App() {
           <h1 className="text-lg font-semibold text-neutral-900 tracking-tight">
             Componentize
           </h1>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsPropertyPanelOpen(!isPropertyPanelOpen)}
-              disabled={!selectedComponentId}
-              className="px-3 py-1.5 text-sm text-neutral-600 hover:text-neutral-900 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
-              title={selectedComponentId ? 'Open properties panel' : 'Select a component first'}
-            >
-              <Settings className="w-4 h-4" />
-              Properties
-            </button>
-            <ExportButton />
-          </div>
+          <ExportButton />
         </header>
 
         {/* Main content area */}
@@ -108,12 +94,6 @@ function App() {
           </div>
         ) : null}
       </DragOverlay>
-
-      {/* Property Panel */}
-      <PropertyPanel
-        isOpen={isPropertyPanelOpen}
-        onClose={() => setIsPropertyPanelOpen(false)}
-      />
     </DndContext>
   );
 }

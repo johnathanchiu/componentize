@@ -112,10 +112,10 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
       // Auto-update status based on event type
       streamStatus:
         event.type === 'thinking' ? 'thinking' :
-        event.type === 'tool_start' || event.type === 'tool_result' ? 'acting' :
-        event.type === 'success' ? 'success' :
-        event.type === 'error' ? 'error' :
-        state.streamStatus,
+          event.type === 'tool_start' || event.type === 'tool_result' ? 'acting' :
+            event.type === 'success' ? 'success' :
+              event.type === 'error' ? 'error' :
+                state.streamStatus,
     })),
   clearStreamingEvents: () => set({ streamingEvents: [], streamStatus: 'idle' }),
   setStreamStatus: (status) => set({ streamStatus: status }),
@@ -161,11 +161,11 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
       canvasComponents: state.canvasComponents.map((comp) =>
         comp.id === componentId
           ? {
-              ...comp,
-              interactions: comp.interactions?.map((i) =>
-                i.id === interactionId ? { ...i, ...updates } : i
-              ),
-            }
+            ...comp,
+            interactions: comp.interactions?.map((i) =>
+              i.id === interactionId ? { ...i, ...updates } : i
+            ),
+          }
           : comp
       ),
     })),
