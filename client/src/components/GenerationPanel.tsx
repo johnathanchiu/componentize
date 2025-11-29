@@ -6,6 +6,12 @@ import { StatusOrb } from './StatusOrb';
 import { Timeline } from './Timeline';
 import { config } from '../config';
 
+// Consistent button styles
+const BUTTON_STYLES = {
+  primary: 'bg-neutral-900 hover:bg-neutral-800',
+  secondary: 'bg-purple-600 hover:bg-purple-700',
+} as const;
+
 export function GenerationPanel() {
   const [prompt, setPrompt] = useState('');
   const [componentName, setComponentName] = useState('');
@@ -47,17 +53,52 @@ export function GenerationPanel() {
   // Auto-trigger fix when there's a pending error
   useEffect(() => {
     if (generationMode === 'fix' && pendingFixError && editingComponentName && !isGenerating) {
-      // Automatically start the fix
       runFix(editingComponentName, pendingFixError.message, pendingFixError.stack);
     }
   }, [generationMode, pendingFixError, editingComponentName, isGenerating]);
 
-  // Core function to run a fix/edit operation
+  // Shared function to handle streaming response
+  const handleStreamResponse = async (
+    stream: AsyncGenerator<any>,
+    targetName: string,
+    isCreateMode: boolean
+  ) => {
+    for await (const event of stream) {
+      addStreamingEvent(event);
+
+      if (event.type === 'success') {
+        if (isCreateMode) {
+          addAvailableComponent({ name: targetName, filepath: '' });
+        } else if (iframeRef.current) {
+          iframeRef.current.src = `${config.apiBaseUrl}/preview/${targetName}?t=${Date.now()}`;
+        }
+
+        // Clear form after delay
+        setTimeout(() => {
+          setPrompt('');
+          if (isCreateMode) {
+            setComponentName('');
+          }
+          // Auto-collapse after success
+          setTimeout(() => {
+            setStreamPanelExpanded(false);
+            if (!isCreateMode) {
+              setGenerationMode('create');
+              setEditingComponentName(null);
+            }
+          }, 2000);
+        }, 1000);
+      } else if (event.type === 'error') {
+        setError(event.message);
+      }
+    }
+  };
+
+  // Core function to run a fix operation
   const runFix = async (targetName: string, errorMessage: string, errorStack?: string) => {
     setError('');
     clearStreamingEvents();
 
-    // Add initial event showing the error
     addStreamingEvent({
       type: 'thinking',
       message: `Fixing error: ${errorMessage}`,
@@ -68,13 +109,7 @@ export function GenerationPanel() {
     setIsGenerating(true);
     setStreamPanelExpanded(true);
     setStreamStatus('thinking');
-
-    // Clear pending error so we don't re-trigger
     setPendingFixError(null);
-
-    // Log what we're sending for debugging
-    console.log('[Fix] Error message:', errorMessage);
-    console.log('[Fix] Error stack:', errorStack);
 
     const fixPrompt = `Fix this runtime error in component "${targetName}":
 
@@ -91,25 +126,7 @@ Call read_component to see the code, find the bug, and call update_component wit
 
     try {
       const stream = editComponentStream(targetName, fixPrompt);
-
-      for await (const event of stream) {
-        addStreamingEvent(event);
-
-        if (event.type === 'success') {
-          // Clear form after delay
-          setTimeout(() => {
-            setPrompt('');
-            // Auto-collapse after success
-            setTimeout(() => {
-              setStreamPanelExpanded(false);
-              setGenerationMode('create');
-              setEditingComponentName(null);
-            }, 2000);
-          }, 1000);
-        } else if (event.type === 'error') {
-          setError(event.message);
-        }
-      }
+      await handleStreamResponse(stream, targetName, false);
     } catch (err) {
       setError('Network error. Make sure the backend server is running.');
       setStreamStatus('error');
@@ -118,6 +135,7 @@ Call read_component to see the code, find the bug, and call update_component wit
     }
   };
 
+  // Handle generate/edit submission
   const handleGenerate = async () => {
     if (!prompt.trim()) {
       setError('Please describe what you want');
@@ -129,7 +147,6 @@ Call read_component to see the code, find the bug, and call update_component wit
       return;
     }
 
-    // Validate component name for create mode
     if (generationMode === 'create' && !/^[A-Z][a-zA-Z0-9]*$/.test(componentName)) {
       setError('Component name must start with uppercase and contain only letters/numbers');
       return;
@@ -149,43 +166,7 @@ Call read_component to see the code, find the bug, and call update_component wit
         ? generateComponentStream(prompt, targetName)
         : editComponentStream(targetName, prompt);
 
-      for await (const event of stream) {
-        addStreamingEvent(event);
-
-        if (event.type === 'success') {
-          if (generationMode === 'create') {
-            // Add to available components
-            addAvailableComponent({
-              name: targetName,
-              filepath: '',
-            });
-          } else {
-            // Reload iframe to show updated component
-            if (iframeRef.current) {
-              iframeRef.current.src = `${config.apiBaseUrl}/preview/${targetName}?t=${Date.now()}`;
-            }
-          }
-
-          // Clear form after delay
-          setTimeout(() => {
-            setPrompt('');
-            if (generationMode === 'create') {
-              setComponentName('');
-            }
-            // Auto-collapse after success
-            setTimeout(() => {
-              setStreamPanelExpanded(false);
-              if (generationMode !== 'create') {
-                // Reset to create mode after edit/fix
-                setGenerationMode('create');
-                setEditingComponentName(null);
-              }
-            }, 2000);
-          }, 1000);
-        } else if (event.type === 'error') {
-          setError(event.message);
-        }
-      }
+      await handleStreamResponse(stream, targetName, generationMode === 'create');
     } catch (err) {
       setError('Network error. Make sure the backend server is running.');
       setStreamStatus('error');
@@ -209,6 +190,8 @@ Call read_component to see the code, find the bug, and call update_component wit
     setStreamPanelExpanded(false);
   };
 
+  // UI helper functions
+  const isEditMode = generationMode === 'edit' || generationMode === 'fix';
   const showStreamingArea = isStreamPanelExpanded && (streamingEvents.length > 0 || isGenerating);
 
   const getModeLabel = () => {
@@ -229,20 +212,16 @@ Call read_component to see the code, find the bug, and call update_component wit
 
   const getButtonLabel = () => {
     if (isGenerating) {
-      return generationMode === 'create' ? 'Generating' : generationMode === 'edit' ? 'Updating' : 'Fixing';
+      return generationMode === 'create' ? 'Generating...' : 'Updating...';
     }
-    return generationMode === 'create' ? 'Generate' : generationMode === 'edit' ? 'Update' : 'Fix';
+    return generationMode === 'create' ? 'Generate' : 'Update';
   };
 
   const getPlaceholder = () => {
-    switch (generationMode) {
-      case 'edit':
-        return `Describe changes to ${editingComponentName}... (e.g., Make the button blue, add a subtitle)`;
-      case 'fix':
-        return `Describe the issue or let AI auto-fix ${editingComponentName}...`;
-      default:
-        return 'Describe your component... (e.g., A pricing card with three tiers)';
+    if (generationMode === 'edit') {
+      return `Describe changes to ${editingComponentName}...`;
     }
+    return 'Describe your component...';
   };
 
   return (
@@ -250,7 +229,6 @@ Call read_component to see the code, find the bug, and call update_component wit
       {/* Streaming area - expandable */}
       {showStreamingArea && (
         <div className="border-b border-neutral-100 animate-fade-in">
-          {/* Streaming header */}
           <div className="flex items-center justify-between px-4 py-2 bg-neutral-50">
             <div className="flex items-center gap-2">
               <StatusOrb status={streamStatus} />
@@ -265,19 +243,17 @@ Call read_component to see the code, find the bug, and call update_component wit
             <button
               onClick={() => setStreamPanelExpanded(false)}
               className="p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
-              aria-label="Collapse streaming panel"
+              aria-label="Collapse panel"
             >
               <ChevronDown className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Timeline */}
           <div className="px-4 py-2">
             <Timeline events={streamingEvents} />
           </div>
 
-          {/* Hidden iframe for reloading edited components */}
-          {generationMode !== 'create' && (
+          {isEditMode && (
             <iframe
               ref={iframeRef}
               className="hidden"
@@ -294,24 +270,24 @@ Call read_component to see the code, find the bug, and call update_component wit
           className="w-full flex items-center justify-center gap-2 px-4 py-1.5 bg-neutral-50 border-b border-neutral-100 text-sm text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
         >
           <StatusOrb status={streamStatus} size="sm" />
-          <span>Show generation log</span>
+          <span>Show log</span>
           <ChevronUp className="w-3.5 h-3.5" />
         </button>
       )}
 
       {/* Mode indicator for edit/fix */}
-      {generationMode !== 'create' && (
-        <div className="flex items-center justify-between px-4 py-2 bg-ai-thinking/10 border-b border-ai-thinking/20">
-          <div className="flex items-center gap-2">
+      {isEditMode && (
+        <div className="flex items-center justify-between px-4 py-2 bg-purple-50 border-b border-purple-100">
+          <div className="flex items-center gap-2 text-purple-700">
             {getModeIcon()}
-            <span className="text-sm font-medium text-ai-thinking">
+            <span className="text-sm font-medium">
               {generationMode === 'edit' ? 'Editing' : 'Fixing'}: {editingComponentName}
             </span>
           </div>
           <button
             onClick={handleCancel}
             className="p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
-            aria-label="Cancel edit"
+            aria-label="Cancel"
           >
             <X className="w-4 h-4" />
           </button>
@@ -347,22 +323,15 @@ Call read_component to see the code, find the bug, and call update_component wit
             onClick={handleGenerate}
             disabled={isGenerating || !prompt.trim() || (generationMode === 'create' && !componentName.trim())}
             className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap ${
-              generationMode === 'create'
-                ? 'bg-neutral-900 hover:bg-neutral-800'
-                : 'bg-purple-600 hover:bg-purple-700'
+              isEditMode ? BUTTON_STYLES.secondary : BUTTON_STYLES.primary
             }`}
           >
             {isGenerating ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>{getButtonLabel()}</span>
-              </>
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <>
-                {getModeIcon()}
-                <span>{getButtonLabel()}</span>
-              </>
+              getModeIcon()
             )}
+            <span>{getButtonLabel()}</span>
           </button>
         </div>
       )}
