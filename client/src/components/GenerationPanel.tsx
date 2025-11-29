@@ -320,7 +320,7 @@ Call read_component to see the code, find the bug, and call update_component wit
 
       {/* Prompt bar - hidden during auto-fix */}
       {generationMode !== 'fix' && (
-        <div className="flex items-center gap-3 px-4 py-3">
+        <div className="flex items-center gap-3 px-4 py-3 min-w-0">
           {generationMode === 'create' && (
             <input
               type="text"
@@ -328,7 +328,7 @@ Call read_component to see the code, find the bug, and call update_component wit
               onChange={(e) => setComponentName(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="ComponentName"
-              className="w-40 px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
+              className="w-40 flex-shrink-0 px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
               disabled={isGenerating}
             />
           )}
@@ -339,17 +339,17 @@ Call read_component to see the code, find the bug, and call update_component wit
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={getPlaceholder()}
-            className="flex-1 px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
+            className="flex-1 min-w-0 px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
             disabled={isGenerating}
           />
 
           <button
             onClick={handleGenerate}
             disabled={isGenerating || !prompt.trim() || (generationMode === 'create' && !componentName.trim())}
-            className={`flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+            className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap ${
               generationMode === 'create'
                 ? 'bg-neutral-900 hover:bg-neutral-800'
-                : 'bg-ai-thinking hover:bg-ai-thinking/90'
+                : 'bg-purple-600 hover:bg-purple-700'
             }`}
           >
             {isGenerating ? (
