@@ -7,7 +7,7 @@ export interface Tool {
   description: string;
   input_schema: {
     type: 'object';
-    properties: Record<string, any>;
+    properties: Record<string, unknown>;
     required: string[];
   };
 }
@@ -15,57 +15,223 @@ export interface Tool {
 export interface ToolResult {
   status: 'success' | 'error';
   message: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
- * Base Agent class with common streaming logic
+ * Base Agent class with streaming support
  * All agents extend this to avoid code duplication
  */
 export abstract class BaseAgent {
   protected client: Anthropic;
   protected tools: Tool[];
+  protected systemPrompt: string;
 
-  constructor(tools: Tool[]) {
+  constructor(tools: Tool[], systemPrompt?: string) {
     this.client = new Anthropic({
       apiKey: appConfig.api.anthropicApiKey,
     });
     this.tools = tools;
+    this.systemPrompt = systemPrompt || this.getDefaultSystemPrompt();
+  }
+
+  /**
+   * Default system prompt that encourages tool use
+   */
+  private getDefaultSystemPrompt(): string {
+    return `You are an expert React/TypeScript developer assistant. Your job is to write high-quality code.
+
+CRITICAL INSTRUCTIONS:
+1. You MUST use tools to complete tasks. Never just describe what you would do - actually do it by calling tools.
+2. When asked to create or modify code, ALWAYS call the appropriate tool with the complete code.
+3. Do NOT ask clarifying questions. Make reasonable decisions and proceed.
+4. Do NOT explain what you're going to do before doing it. Just do it.
+5. Write clean, working code on the first try.
+
+When writing React components:
+- Use TypeScript with proper type definitions
+- Use Tailwind CSS for styling (no CSS files)
+- Use functional components with hooks
+- Make components accessible (aria labels, semantic HTML)
+- Export the component as default`;
   }
 
   /**
    * Execute a tool call - must be implemented by subclasses
    */
-  protected abstract executeTool(toolName: string, toolInput: any): Promise<ToolResult>;
+  protected abstract executeTool(toolName: string, toolInput: unknown): Promise<ToolResult>;
 
   /**
-   * Common agent loop with streaming
-   * Yields progress events as the agent works
+   * Determine if we should emit a thinking chunk
+   * Strategy: Emit on sentence boundaries or after significant content
+   */
+  private shouldEmitThinkingChunk(text: string): boolean {
+    // Emit if we have a complete sentence
+    const sentenceEnders = ['.', '!', '?', ':'];
+    const lastChar = text.trim().slice(-1);
+    if (sentenceEnders.includes(lastChar) && text.length > 20) {
+      return true;
+    }
+
+    // Emit if we have a newline (paragraph break)
+    if (text.includes('\n') && text.length > 10) {
+      return true;
+    }
+
+    // Emit if accumulated text is getting long (buffer limit)
+    if (text.length > 150) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Sanitize tool input for streaming events
+   * Truncate large fields like 'code' to avoid sending huge events
+   */
+  private sanitizeToolInput(input: Record<string, unknown>): Record<string, unknown> {
+    const sanitized = { ...input };
+
+    // Truncate code fields for display
+    if (sanitized.code && typeof sanitized.code === 'string') {
+      const lines = sanitized.code.split('\n');
+      if (lines.length > 5) {
+        sanitized.code = `${lines.slice(0, 5).join('\n')}\n... (${lines.length - 5} more lines)`;
+      }
+    }
+
+    return sanitized;
+  }
+
+  /**
+   * Common agent loop with real streaming
+   * Yields progress events as the agent works, including Claude's thinking
    */
   protected async *runAgentLoop(
     messages: Anthropic.MessageParam[],
-    onSuccess: (result: any) => boolean  // Return true if we should stop
+    onSuccess: (result: ToolResult) => boolean  // Return true if we should stop
   ): AsyncGenerator<StreamEvent> {
     let iteration = 0;
 
-    yield { type: 'progress', message: 'Starting AI agent...' };
+    yield {
+      type: 'progress',
+      message: 'Starting AI agent...',
+      timestamp: Date.now(),
+      data: { iteration: 0, maxIterations: appConfig.api.maxIterations }
+    };
 
     while (iteration < appConfig.api.maxIterations) {
       iteration++;
 
       yield {
         type: 'progress',
-        message: `Agent iteration ${iteration}/${appConfig.api.maxIterations}...`
+        message: `Processing request...`,
+        timestamp: Date.now(),
+        data: { iteration, maxIterations: appConfig.api.maxIterations }
       };
 
       try {
-        // Call Claude API
-        const response = await this.client.messages.create({
+        // Create streaming request with system prompt and tool choice
+        const stream = this.client.messages.stream({
           model: appConfig.api.modelName,
           max_tokens: appConfig.api.maxTokens,
+          system: this.systemPrompt,
           tools: this.tools,
+          // Force tool use on first iteration, then allow any
+          tool_choice: iteration === 1 ? { type: 'any' } : { type: 'auto' },
           messages,
         });
+
+        // Track state during streaming
+        let accumulatedText = '';
+        let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
+        const pendingToolUses: Array<{ id: string; name: string; input: unknown }> = [];
+
+        // Process streaming events
+        for await (const event of stream) {
+          const timestamp = Date.now();
+
+          switch (event.type) {
+            case 'content_block_start':
+              if (event.content_block.type === 'text') {
+                // Text block starting - Claude is about to reason
+                accumulatedText = '';
+              } else if (event.content_block.type === 'tool_use') {
+                // Tool use block starting
+                currentToolUse = {
+                  id: event.content_block.id,
+                  name: event.content_block.name,
+                  inputJson: '',
+                };
+              }
+              break;
+
+            case 'content_block_delta':
+              if (event.delta.type === 'text_delta') {
+                // Claude is streaming text - emit in meaningful chunks
+                accumulatedText += event.delta.text;
+
+                if (this.shouldEmitThinkingChunk(accumulatedText)) {
+                  yield {
+                    type: 'thinking',
+                    message: accumulatedText.trim(),
+                    timestamp,
+                    data: { content: accumulatedText.trim() }
+                  };
+                  accumulatedText = '';
+                }
+              } else if (event.delta.type === 'input_json_delta') {
+                // Tool input is being streamed
+                if (currentToolUse) {
+                  currentToolUse.inputJson += event.delta.partial_json;
+                }
+              }
+              break;
+
+            case 'content_block_stop':
+              // Emit any remaining accumulated thinking
+              if (accumulatedText.trim()) {
+                yield {
+                  type: 'thinking',
+                  message: accumulatedText.trim(),
+                  timestamp,
+                  data: { content: accumulatedText.trim() }
+                };
+                accumulatedText = '';
+              }
+
+              // If we finished a tool use block, emit tool_start event
+              if (currentToolUse) {
+                try {
+                  const toolInput = JSON.parse(currentToolUse.inputJson || '{}');
+                  pendingToolUses.push({
+                    id: currentToolUse.id,
+                    name: currentToolUse.name,
+                    input: toolInput,
+                  });
+
+                  yield {
+                    type: 'tool_start',
+                    message: `Calling ${currentToolUse.name}...`,
+                    timestamp,
+                    data: {
+                      toolName: currentToolUse.name,
+                      toolInput: this.sanitizeToolInput(toolInput),
+                      toolUseId: currentToolUse.id,
+                    }
+                  };
+                } catch {
+                  // JSON parse error - skip
+                }
+                currentToolUse = null;
+              }
+              break;
+          }
+        }
+
+        // Get final message after streaming completes
+        const response = await stream.finalMessage();
 
         // Handle tool use
         if (response.stop_reason === 'tool_use') {
@@ -75,19 +241,30 @@ export abstract class BaseAgent {
             content: response.content,
           });
 
-          // Process tool calls
+          // Process and execute tool calls
           const toolResults: Anthropic.MessageParam[] = [];
 
           for (const contentBlock of response.content) {
             if (contentBlock.type === 'tool_use') {
               const { name: toolName, input: toolInput, id: toolUseId } = contentBlock;
 
-              yield { type: 'tool_call', message: `Calling tool: ${toolName}...` };
-
               // Execute the tool
               const result = await this.executeTool(toolName, toolInput);
 
-              // Add tool result
+              // Emit tool result event
+              yield {
+                type: 'tool_result',
+                message: result.message,
+                timestamp: Date.now(),
+                data: {
+                  toolName,
+                  toolUseId,
+                  status: result.status,
+                  result: result,
+                }
+              };
+
+              // Add tool result to messages
               toolResults.push({
                 role: 'user',
                 content: [{
@@ -99,7 +276,12 @@ export abstract class BaseAgent {
 
               // Check if this tool call indicates success
               if (onSuccess(result)) {
-                yield { type: 'success', message: result.message };
+                yield {
+                  type: 'success',
+                  message: result.message,
+                  timestamp: Date.now(),
+                  data: { result }
+                };
                 return;
               }
             }
@@ -109,8 +291,8 @@ export abstract class BaseAgent {
           messages.push(...toolResults);
 
         } else if (response.stop_reason === 'end_turn') {
-          // Claude finished without using tools
-          // Prompt it to use tools
+          // Claude finished without using tools - this shouldn't happen with tool_choice: any
+          // But if it does, force tool use more aggressively
           messages.push({
             role: 'assistant',
             content: response.content,
@@ -118,16 +300,21 @@ export abstract class BaseAgent {
 
           messages.push({
             role: 'user',
-            content: 'Please use the appropriate tool to save your work. Don\'t just describe it - actually call the tool with the code.',
+            content: 'You MUST call a tool now. Do not respond with text - call the appropriate tool immediately with the complete code.',
           });
 
-          yield { type: 'progress', message: 'Prompting agent to use tool...' };
+          yield {
+            type: 'progress',
+            message: 'Requesting tool execution...',
+            timestamp: Date.now(),
+          };
 
         } else {
           // Other stop reason
           yield {
             type: 'error',
-            message: `Agent stopped unexpectedly: ${response.stop_reason}`
+            message: `Agent stopped unexpectedly: ${response.stop_reason}`,
+            timestamp: Date.now(),
           };
           return;
         }
@@ -135,7 +322,8 @@ export abstract class BaseAgent {
       } catch (error) {
         yield {
           type: 'error',
-          message: `API error: ${error instanceof Error ? error.message : 'Unknown error'}`
+          message: `API error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          timestamp: Date.now(),
         };
         return;
       }
@@ -144,7 +332,8 @@ export abstract class BaseAgent {
     // Max iterations reached
     yield {
       type: 'error',
-      message: 'Operation exceeded maximum iterations'
+      message: 'Operation exceeded maximum iterations',
+      timestamp: Date.now(),
     };
   }
 

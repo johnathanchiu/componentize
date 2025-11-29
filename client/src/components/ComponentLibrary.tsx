@@ -1,14 +1,15 @@
 import { useEffect } from 'react';
-import { Package, RefreshCw } from 'lucide-react';
+import { RefreshCw, GripVertical, Pencil } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { listComponents } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
 
 interface DraggableComponentProps {
   name: string;
+  onEdit: () => void;
 }
 
-function DraggableComponent({ name }: DraggableComponentProps) {
+function DraggableComponent({ name, onEdit }: DraggableComponentProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `library-${name}`,
     data: { componentName: name, source: 'library' },
@@ -19,17 +20,34 @@ function DraggableComponent({ name }: DraggableComponentProps) {
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={`px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm font-medium text-gray-700 cursor-grab active:cursor-grabbing hover:bg-gray-100 transition-colors ${
-        isDragging ? 'opacity-50' : ''
+      className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-neutral-700 hover:bg-neutral-50 transition-colors cursor-grab active:cursor-grabbing ${
+        isDragging ? 'opacity-50 bg-neutral-100' : ''
       }`}
     >
-      {name}
+      {/* Drag indicator */}
+      <GripVertical className="w-3.5 h-3.5 text-neutral-300 group-hover:text-neutral-400 transition-colors flex-shrink-0" />
+
+      {/* Component name */}
+      <span className="font-medium flex-1">{name}</span>
+
+      {/* Edit button - stops propagation to prevent drag */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdit();
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        className="p-1 opacity-0 group-hover:opacity-100 hover:bg-neutral-200 rounded transition-all"
+        title={`Edit ${name}`}
+      >
+        <Pencil className="w-3.5 h-3.5 text-neutral-500" />
+      </button>
     </div>
   );
 }
 
 export function ComponentLibrary() {
-  const { availableComponents, setAvailableComponents } = useCanvasStore();
+  const { availableComponents, setAvailableComponents, startEditing } = useCanvasStore();
 
   const loadComponents = async () => {
     try {
@@ -47,36 +65,43 @@ export function ComponentLibrary() {
   }, []);
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Package className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold text-gray-900">Components</h2>
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
+        <div>
+          <h2 className="text-sm font-semibold text-neutral-900">Components</h2>
+          <p className="text-xs text-neutral-400 mt-0.5">
+            {availableComponents.length} available
+          </p>
         </div>
         <button
           onClick={loadComponents}
-          className="p-1 hover:bg-gray-100 rounded-md transition-colors"
-          title="Refresh"
+          className="p-1.5 hover:bg-neutral-100 rounded-md transition-colors"
+          title="Refresh components"
         >
-          <RefreshCw className="w-4 h-4 text-gray-600" />
+          <RefreshCw className="w-3.5 h-3.5 text-neutral-400" />
         </button>
       </div>
 
-      <div className="text-xs text-gray-500 mb-3">
-        Drag components to the canvas
-      </div>
-
-      <div className="flex-1 overflow-y-auto space-y-2">
+      {/* Component list */}
+      <div className="flex-1 overflow-y-auto p-2">
         {availableComponents.length === 0 ? (
-          <div className="text-sm text-gray-400 text-center py-8">
-            No components yet.
-            <br />
-            Generate your first component above!
+          <div className="text-sm text-neutral-400 text-center py-12 px-4">
+            <p>No components yet</p>
+            <p className="text-xs mt-1">
+              Use the prompt below to generate your first component
+            </p>
           </div>
         ) : (
-          availableComponents.map((component) => (
-            <DraggableComponent key={component.name} name={component.name} />
-          ))
+          <div className="space-y-0.5">
+            {availableComponents.map((component) => (
+              <DraggableComponent
+                key={component.name}
+                name={component.name}
+                onEdit={() => startEditing(component.name)}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>

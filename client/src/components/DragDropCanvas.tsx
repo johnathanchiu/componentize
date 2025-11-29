@@ -7,7 +7,6 @@ import { InteractionPanel } from './InteractionPanel';
 import { Resizable } from 're-resizable';
 import type { Size } from '../types/index';
 import { useEffect, useState, useRef } from 'react';
-import { editComponentStream } from '../lib/api';
 import { config } from '../config';
 
 interface CanvasItemProps {
@@ -20,19 +19,22 @@ interface CanvasItemProps {
   onSelect: () => void;
   onDelete: () => void;
   onResize: (width: number, height: number) => void;
+  onFix: (errorMessage: string, errorStack?: string) => void;
   interactions?: any[];
 }
 
-function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onDelete, onResize, interactions }: CanvasItemProps) {
+function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onDelete, onResize, onFix, interactions }: CanvasItemProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `canvas-${id}`,
     data: { id, componentName, source: 'canvas' },
   });
 
   const [componentError, setComponentError] = useState<{ message: string; stack?: string } | null>(null);
-  const [isFixing, setIsFixing] = useState(false);
-  const [fixProgress, setFixProgress] = useState<string>('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const { isGenerating, generationMode, editingComponentName, streamStatus } = useCanvasStore();
+
+  // Track if this component is currently being fixed
+  const isBeingFixed = generationMode === 'fix' && editingComponentName === componentName && isGenerating;
 
   // Listen for error messages from iframe
   useEffect(() => {
@@ -48,35 +50,27 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onDel
     return () => window.removeEventListener('message', handleMessage);
   }, [componentName]);
 
-  const handleFixErrors = async () => {
-    if (!componentError) return;
-
-    setIsFixing(true);
-    setFixProgress('Connecting to AI...');
-
-    try {
-      const errorDescription = `Fix this error in the component:\n\nError: ${componentError.message}\n\n${componentError.stack ? `Stack: ${componentError.stack}` : ''}`;
-
-      for await (const event of editComponentStream(componentName, errorDescription)) {
-        if (event.type === 'progress') {
-          setFixProgress(event.message);
-        } else if (event.type === 'success') {
-          setFixProgress(event.message);
-          // Reload iframe to show fixed component
-          if (iframeRef.current) {
-            iframeRef.current.src = iframeRef.current.src;
-          }
-          setComponentError(null);
-          setTimeout(() => setFixProgress(''), 2000);
-        } else if (event.type === 'error') {
-          setFixProgress(`Error: ${event.message}`);
+  // Reload iframe when fix completes successfully
+  useEffect(() => {
+    if (
+      generationMode === 'fix' &&
+      editingComponentName === componentName &&
+      streamStatus === 'success' &&
+      iframeRef.current
+    ) {
+      // Small delay to ensure backend has reloaded
+      setTimeout(() => {
+        if (iframeRef.current) {
+          iframeRef.current.src = iframeRef.current.src;
         }
-      }
-    } catch (err) {
-      setFixProgress('Failed to fix errors');
-    } finally {
-      setIsFixing(false);
+        setComponentError(null);
+      }, 500);
     }
+  }, [streamStatus, generationMode, editingComponentName, componentName]);
+
+  const handleFixErrors = () => {
+    if (!componentError) return;
+    onFix(componentError.message, componentError.stack);
   };
 
   const style = {
@@ -129,9 +123,9 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onDel
         handleClasses={{
           bottomRight: 'resize-handle resize-handle-corner',
         }}
-        className={`border-2 rounded-lg shadow-sm ${
-          isSelected ? 'border-purple-500' : 'border-gray-300'
-        } hover:border-purple-400 transition-colors relative overflow-hidden`}
+        className={`border-2 rounded-lg shadow-sm bg-white ${
+          isSelected ? 'border-neutral-900' : 'border-neutral-200'
+        } hover:border-neutral-400 transition-colors relative overflow-hidden`}
       >
         {/* Draggable border overlay - appears on hover over edges */}
         <div
@@ -151,7 +145,7 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onDel
 
         {/* Component name label - shows on hover */}
         <div className="absolute top-0 left-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-20">
-          <div className="px-2 py-1 bg-purple-600 text-white text-xs font-medium">
+          <div className="px-2 py-1 bg-neutral-900 text-white text-xs font-medium">
             {componentName}
           </div>
         </div>
@@ -174,27 +168,27 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onDel
               {componentError.message}
             </div>
 
-            {/* Progress indicator */}
-            {isFixing && fixProgress && (
+            {/* Progress indicator - now shown in the bottom panel */}
+            {isBeingFixed && (
               <div className="mb-3 px-3 py-1.5 bg-blue-100 border border-blue-300 rounded text-xs text-blue-800 max-w-full">
-                {fixProgress}
+                Fixing in progress... (see bottom panel)
               </div>
             )}
 
             <button
               onClick={handleFixErrors}
-              disabled={isFixing}
+              disabled={isBeingFixed}
               className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 pointer-events-auto"
             >
-              <Wrench className={`w-4 h-4 ${isFixing ? 'animate-spin' : ''}`} />
-              {isFixing ? 'Fixing...' : 'Fix with AI'}
+              <Wrench className={`w-4 h-4 ${isBeingFixed ? 'animate-spin' : ''}`} />
+              {isBeingFixed ? 'Fixing...' : 'Fix with AI'}
             </button>
           </div>
         )}
 
         {/* Interaction count badge - positioned at bottom */}
         {interactions && interactions.length > 0 && (
-          <div className="absolute bottom-2 left-2 px-2 py-1 bg-purple-600 text-white text-xs rounded-md shadow-sm pointer-events-none z-20">
+          <div className="absolute bottom-2 left-2 px-2 py-1 bg-neutral-700 text-white text-xs rounded-md shadow-sm pointer-events-none z-20">
             {interactions.length} interaction{interactions.length !== 1 ? 's' : ''}
           </div>
         )}
@@ -223,27 +217,31 @@ export function DragDropCanvas() {
     setSelectedComponentId,
     removeFromCanvas,
     updateSize,
+    startFixing,
   } = useCanvasStore();
 
-  return (
-    <div className="h-full bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      <div className="h-12 bg-gray-50 border-b border-gray-200 flex items-center px-4">
-        <h2 className="text-sm font-semibold text-gray-700">Canvas</h2>
-        <div className="ml-auto text-xs text-gray-500">
-          {canvasComponents.length} component{canvasComponents.length !== 1 ? 's' : ''}
-        </div>
-      </div>
+  // Handler to start fixing a component with an error - auto-triggers fix
+  const handleFix = (componentName: string, errorMessage: string, errorStack?: string) => {
+    startFixing(componentName, { message: errorMessage, stack: errorStack });
+  };
 
+  return (
+    <div className="h-full overflow-hidden">
       <div
         ref={setNodeRef}
-        className="relative w-full h-[calc(100%-3rem)] bg-gray-50 overflow-auto"
+        className="relative w-full h-full overflow-auto"
+        style={{
+          backgroundColor: '#FAFAFA',
+          backgroundImage: 'radial-gradient(circle, #D4D4D4 1px, transparent 1px)',
+          backgroundSize: '20px 20px',
+        }}
         onClick={() => setSelectedComponentId(null)}
       >
         {canvasComponents.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center text-gray-400">
-              <div className="text-lg mb-1">Drop components here</div>
-              <div className="text-sm">Drag from the component library to start building</div>
+            <div className="text-center text-neutral-400">
+              <div className="text-base mb-1">Drop components here</div>
+              <div className="text-sm">Drag from the library to start building</div>
             </div>
           </div>
         ) : (
@@ -259,6 +257,7 @@ export function DragDropCanvas() {
               onSelect={() => setSelectedComponentId(item.id)}
               onDelete={() => removeFromCanvas(item.id)}
               onResize={(width, height) => updateSize(item.id, width, height)}
+              onFix={(errorMessage, errorStack) => handleFix(item.componentName, errorMessage, errorStack)}
               interactions={item.interactions}
             />
           ))

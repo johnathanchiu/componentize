@@ -100,12 +100,30 @@ export interface ExportFile {
 }
 
 // Streaming Event Types
-export type StreamEventType = 'progress' | 'success' | 'error' | 'thinking' | 'tool_call';
+export type StreamEventType =
+  | 'progress'      // Generic status updates
+  | 'thinking'      // Claude's reasoning text (streamed in chunks)
+  | 'tool_start'    // Tool call initiated (with tool name & params)
+  | 'tool_result'   // Tool execution completed
+  | 'success'       // Final success
+  | 'error';        // Error occurred
+
+export type StreamStatus = 'idle' | 'thinking' | 'acting' | 'success' | 'error';
 
 export interface StreamEvent {
   type: StreamEventType;
   message: string;
-  data?: any;
+  timestamp: number;
+  data?: {
+    content?: string;           // For thinking events - the reasoning text
+    toolName?: string;          // For tool events
+    toolInput?: Record<string, unknown>;  // Tool parameters (sanitized)
+    toolUseId?: string;         // For correlating tool_start with tool_result
+    iteration?: number;         // Current iteration
+    maxIterations?: number;     // Max iterations allowed
+    status?: 'success' | 'error';  // For tool_result
+    result?: unknown;           // Tool result data
+  };
 }
 
 // Page Layout Types

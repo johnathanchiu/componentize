@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import type { Component, CanvasComponent, Interaction } from '../types/index';
+import type { Component, CanvasComponent, Interaction, StreamEvent, StreamStatus } from '../types/index';
+
+interface ErrorContext {
+  message: string;
+  stack?: string;
+}
 
 interface CanvasStore {
   // Component library
@@ -20,6 +25,25 @@ interface CanvasStore {
   setIsGenerating: (value: boolean) => void;
   selectedComponentId: string | null;
   setSelectedComponentId: (id: string | null) => void;
+
+  // Streaming state
+  streamingEvents: StreamEvent[];
+  streamStatus: StreamStatus;
+  isStreamPanelExpanded: boolean;
+  currentComponentName: string;
+  generationMode: 'create' | 'edit' | 'fix';
+  editingComponentName: string | null;  // Which component is being edited
+  pendingFixError: ErrorContext | null;  // Error to auto-fix
+  addStreamingEvent: (event: StreamEvent) => void;
+  clearStreamingEvents: () => void;
+  setStreamStatus: (status: StreamStatus) => void;
+  setStreamPanelExpanded: (expanded: boolean) => void;
+  setCurrentComponentName: (name: string) => void;
+  setGenerationMode: (mode: 'create' | 'edit' | 'fix') => void;
+  setEditingComponentName: (name: string | null) => void;
+  setPendingFixError: (error: ErrorContext | null) => void;
+  startEditing: (componentName: string) => void;
+  startFixing: (componentName: string, error?: ErrorContext) => void;
 
   // Interactions
   addInteraction: (componentId: string, interaction: Interaction) => void;
@@ -73,6 +97,47 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
   setIsGenerating: (value) => set({ isGenerating: value }),
   selectedComponentId: null,
   setSelectedComponentId: (id) => set({ selectedComponentId: id }),
+
+  // Streaming state
+  streamingEvents: [],
+  streamStatus: 'idle',
+  isStreamPanelExpanded: false,
+  currentComponentName: '',
+  generationMode: 'create',
+  editingComponentName: null,
+  pendingFixError: null,
+  addStreamingEvent: (event) =>
+    set((state) => ({
+      streamingEvents: [...state.streamingEvents, event],
+      // Auto-update status based on event type
+      streamStatus:
+        event.type === 'thinking' ? 'thinking' :
+        event.type === 'tool_start' || event.type === 'tool_result' ? 'acting' :
+        event.type === 'success' ? 'success' :
+        event.type === 'error' ? 'error' :
+        state.streamStatus,
+    })),
+  clearStreamingEvents: () => set({ streamingEvents: [], streamStatus: 'idle' }),
+  setStreamStatus: (status) => set({ streamStatus: status }),
+  setStreamPanelExpanded: (expanded) => set({ isStreamPanelExpanded: expanded }),
+  setCurrentComponentName: (name) => set({ currentComponentName: name }),
+  setGenerationMode: (mode) => set({ generationMode: mode }),
+  setEditingComponentName: (name) => set({ editingComponentName: name }),
+  setPendingFixError: (error) => set({ pendingFixError: error }),
+  startEditing: (componentName) => set({
+    generationMode: 'edit',
+    editingComponentName: componentName,
+    currentComponentName: componentName,
+    isStreamPanelExpanded: true,
+    pendingFixError: null,
+  }),
+  startFixing: (componentName, error) => set({
+    generationMode: 'fix',
+    editingComponentName: componentName,
+    currentComponentName: componentName,
+    isStreamPanelExpanded: true,
+    pendingFixError: error || null,
+  }),
 
   // Interactions
   addInteraction: (componentId, interaction) =>

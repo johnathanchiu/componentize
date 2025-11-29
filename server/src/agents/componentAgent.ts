@@ -5,7 +5,7 @@ import type { StreamEvent } from '../../../shared/types';
 const COMPONENT_TOOLS: Tool[] = [
   {
     name: 'create_component',
-    description: 'Create a new React TypeScript component file with Tailwind CSS styling.',
+    description: 'Create a new React TypeScript component file with Tailwind CSS styling. Use this for new components.',
     input_schema: {
       type: 'object',
       properties: {
@@ -22,8 +22,22 @@ const COMPONENT_TOOLS: Tool[] = [
     }
   },
   {
+    name: 'read_component',
+    description: 'Read the current code of an existing component. Use this before updating to see the current implementation.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Name of the component to read'
+        }
+      },
+      required: ['name']
+    }
+  },
+  {
     name: 'update_component',
-    description: 'Update an existing React component file with new code.',
+    description: 'Update an existing React component file with new code. Always provide the COMPLETE updated code, not just the changes.',
     input_schema: {
       type: 'object',
       properties: {
@@ -33,7 +47,7 @@ const COMPONENT_TOOLS: Tool[] = [
         },
         code: {
           type: 'string',
-          description: 'The updated React component code'
+          description: 'The COMPLETE updated React component code (not a diff, the full file)'
         }
       },
       required: ['name', 'code']
@@ -41,20 +55,60 @@ const COMPONENT_TOOLS: Tool[] = [
   }
 ];
 
+const COMPONENT_SYSTEM_PROMPT = `You are an expert React/TypeScript developer. Your ONLY job is to write and modify React components.
+
+CRITICAL RULES - FOLLOW EXACTLY:
+1. ALWAYS use tools. Never respond with just text.
+2. When creating: call create_component with the complete code.
+3. When editing: first call read_component, then call update_component with the COMPLETE updated code.
+4. When fixing errors: read the component, identify the bug, fix it, and save with update_component.
+5. NEVER ask questions. Make reasonable decisions and proceed.
+6. NEVER explain what you'll do. Just do it.
+7. Write working code on the first attempt.
+
+CODE REQUIREMENTS:
+- TypeScript with proper types (no 'any' unless necessary)
+- Tailwind CSS for all styling (no inline styles, no CSS files)
+- Functional components with hooks
+- Accessible (aria-labels, semantic HTML)
+- Export as default
+- Handle edge cases (loading, error, empty states)`;
+
 export class ComponentAgent extends BaseAgent {
   constructor() {
-    super(COMPONENT_TOOLS);
+    super(COMPONENT_TOOLS, COMPONENT_SYSTEM_PROMPT);
   }
 
-  protected async executeTool(toolName: string, toolInput: any): Promise<ToolResult> {
-    const { name, code } = toolInput;
-
+  protected async executeTool(toolName: string, toolInput: unknown): Promise<ToolResult> {
     switch (toolName) {
-      case 'create_component':
-        return await fileService.createComponent(name, code);
+      case 'create_component': {
+        const { name, code } = toolInput as { name: string; code: string };
+        const result = await fileService.createComponent(name, code);
+        return { ...result, component_name: result.component_name };
+      }
 
-      case 'update_component':
-        return await fileService.updateComponent(name, code);
+      case 'read_component': {
+        const { name } = toolInput as { name: string };
+        const result = await fileService.readComponent(name);
+        if (result.status === 'success') {
+          return {
+            status: 'success',
+            message: `Component '${name}' code:`,
+            code: result.content,
+            component_name: name,
+          };
+        }
+        return {
+          status: result.status,
+          message: result.message,
+        };
+      }
+
+      case 'update_component': {
+        const { name, code } = toolInput as { name: string; code: string };
+        const result = await fileService.updateComponent(name, code);
+        return { ...result, component_name: result.component_name };
+      }
 
       default:
         return {
@@ -68,24 +122,14 @@ export class ComponentAgent extends BaseAgent {
    * Generate a new component with streaming
    */
   async *generateComponent(prompt: string, componentName: string): AsyncGenerator<StreamEvent> {
-    yield { type: 'progress', message: `Generating component '${componentName}'...` };
+    yield { type: 'progress', message: `Creating '${componentName}'...`, timestamp: Date.now() };
 
     const messages = [
       {
         role: 'user' as const,
-        content: `Create a React TypeScript component named '${componentName}' based on this description:
+        content: `Create component "${componentName}": ${prompt}
 
-${prompt}
-
-Requirements:
-- Use TypeScript with proper type definitions
-- Use Tailwind CSS for all styling
-- Make it a functional component with export default
-- Make it responsive and accessible
-- Include any necessary props with TypeScript interfaces
-- Use modern React patterns (hooks if needed)
-
-IMPORTANT: You must use the create_component tool to save the component. Do not just describe the component - actually call the create_component tool with the full component code.`
+Call create_component now.`
       }
     ];
 
@@ -99,41 +143,26 @@ IMPORTANT: You must use the create_component tool to save the component. Do not 
    * Edit an existing component with streaming
    */
   async *editComponent(componentName: string, editDescription: string): AsyncGenerator<StreamEvent> {
-    yield { type: 'progress', message: `Reading component '${componentName}'...` };
+    yield { type: 'progress', message: `Editing '${componentName}'...`, timestamp: Date.now() };
 
-    // Read existing component
-    const readResult = await fileService.readComponent(componentName);
-
-    if (readResult.status !== 'success') {
-      yield { type: 'error', message: `Component '${componentName}' not found` };
+    // Check component exists
+    const exists = await fileService.readComponent(componentName);
+    if (exists.status !== 'success') {
+      yield { type: 'error', message: `Component '${componentName}' not found`, timestamp: Date.now() };
       return;
     }
-
-    const existingCode = readResult.content!;
-
-    yield { type: 'progress', message: 'Preparing edit instructions...' };
 
     const messages = [
       {
         role: 'user' as const,
-        content: `Please edit the React TypeScript component '${componentName}' based on this description:
+        content: `Edit component "${componentName}": ${editDescription}
 
-${editDescription}
+Steps:
+1. Call read_component to get current code
+2. Fix the issue
+3. Call update_component with the complete fixed code
 
-Here is the current component code:
-
-\`\`\`tsx
-${existingCode}
-\`\`\`
-
-Requirements:
-- Maintain TypeScript with proper type definitions
-- Keep using Tailwind CSS for styling
-- Keep it as a functional component with export default
-- Preserve the core functionality while making the requested changes
-- Use modern React patterns
-
-IMPORTANT: You must use the update_component tool to save the modified component. Do not just describe the component - actually call the update_component tool with the full component code.`
+Start now.`
       }
     ];
 

@@ -2,11 +2,11 @@ import { DndContext, DragOverlay } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { useState } from 'react';
 import { Settings } from 'lucide-react';
-import { ComponentGenerator } from './components/ComponentGenerator';
 import { ComponentLibrary } from './components/ComponentLibrary';
 import { DragDropCanvas } from './components/DragDropCanvas';
 import { ExportButton } from './components/ExportButton';
 import { PropertyPanel } from './components/PropertyPanel';
+import { GenerationPanel } from './components/GenerationPanel';
 import { useCanvasStore } from './store/canvasStore';
 
 function App() {
@@ -59,20 +59,17 @@ function App() {
 
   return (
     <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="h-screen bg-gray-100 flex flex-col">
-        {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Component Builder</h1>
-            <p className="text-sm text-gray-500">
-              Generate components with AI, drag and drop to build your page
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
+      <div className="h-screen bg-neutral-100 flex flex-col">
+        {/* Header - minimal */}
+        <header className="bg-white border-b border-neutral-200 px-6 py-3 flex items-center justify-between">
+          <h1 className="text-lg font-semibold text-neutral-900 tracking-tight">
+            Componentize
+          </h1>
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setIsPropertyPanelOpen(!isPropertyPanelOpen)}
               disabled={!selectedComponentId}
-              className="px-4 py-2 bg-gray-600 text-white rounded-md font-medium hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+              className="px-3 py-1.5 text-sm text-neutral-600 hover:text-neutral-900 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
               title={selectedComponentId ? 'Open properties panel' : 'Select a component first'}
             >
               <Settings className="w-4 h-4" />
@@ -82,27 +79,27 @@ function App() {
           </div>
         </header>
 
-        {/* Main content */}
-        <div className="flex-1 flex gap-4 p-4 overflow-hidden">
-          {/* Left sidebar */}
-          <div className="w-80 flex flex-col gap-4 overflow-hidden">
-            <ComponentGenerator />
-            <div className="flex-1 min-h-0">
-              <ComponentLibrary />
-            </div>
+        {/* Main content area */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left sidebar - Components Library only */}
+          <div className="w-64 border-r border-neutral-200 bg-white flex flex-col">
+            <ComponentLibrary />
           </div>
 
-          {/* Canvas */}
+          {/* Canvas area */}
           <div className="flex-1 min-w-0">
             <DragDropCanvas />
           </div>
         </div>
+
+        {/* Bottom panel - Generation interface */}
+        <GenerationPanel />
       </div>
 
       {/* Drag overlay */}
       <DragOverlay>
         {activeComponentName ? (
-          <div className="px-4 py-3 bg-white border-2 border-purple-500 rounded-lg shadow-lg text-sm font-medium text-gray-900 cursor-grabbing">
+          <div className="px-4 py-2.5 bg-white border-2 border-neutral-900 rounded-lg shadow-lg text-sm font-medium text-neutral-900 cursor-grabbing">
             {activeComponentName}
           </div>
         ) : null}

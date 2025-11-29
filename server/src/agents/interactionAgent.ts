@@ -1,5 +1,5 @@
 import { BaseAgent, type Tool, type ToolResult } from './baseAgent';
-import type { StreamEvent, Interaction, StateVariable } from '../../../shared/types';
+import type { StreamEvent, Interaction, StateVariable, InteractionType } from '../../../shared/types';
 
 const INTERACTION_TOOLS: Tool[] = [
   {
@@ -35,17 +35,26 @@ const INTERACTION_TOOLS: Tool[] = [
   }
 ];
 
+interface InteractionToolInput {
+  handlerName: string;
+  code: string;
+  state?: StateVariable[];
+}
+
 export class InteractionAgent extends BaseAgent {
   constructor() {
     super(INTERACTION_TOOLS);
   }
 
-  protected async executeTool(toolName: string, toolInput: any): Promise<ToolResult> {
+  protected async executeTool(toolName: string, toolInput: unknown): Promise<ToolResult> {
     if (toolName === 'create_interaction') {
+      const input = toolInput as InteractionToolInput;
       return {
         status: 'success',
         message: 'Interaction created successfully',
-        ...toolInput
+        handlerName: input.handlerName,
+        code: input.code,
+        state: input.state,
       };
     }
 
@@ -64,7 +73,7 @@ export class InteractionAgent extends BaseAgent {
     description: string,
     eventType: string
   ): AsyncGenerator<StreamEvent> {
-    yield { type: 'progress', message: `Generating ${eventType} interaction...` };
+    yield { type: 'progress', message: `Generating ${eventType} interaction...`, timestamp: Date.now() };
 
     const messages = [
       {
@@ -93,10 +102,10 @@ IMPORTANT: Use the create_interaction tool to return the handler name, code, and
         // Capture the interaction data
         capturedInteraction = {
           id: `${componentId}-${Date.now()}`,
-          type: eventType as any,
+          type: eventType as InteractionType,
           description,
-          handlerName: result.handlerName,
-          code: result.code,
+          handlerName: String(result.handlerName),
+          code: String(result.code),
           state: result.state as StateVariable[] | undefined
         };
         return true;
@@ -111,7 +120,8 @@ IMPORTANT: Use the create_interaction tool to return the handler name, code, and
       yield {
         type: 'success',
         message: 'Interaction created successfully',
-        data: { interaction: capturedInteraction }
+        timestamp: Date.now(),
+        data: { result: capturedInteraction }
       };
     }
   }

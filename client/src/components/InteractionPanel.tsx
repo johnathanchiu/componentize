@@ -52,11 +52,12 @@ export function InteractionPanel({ componentId, componentName, interactions = []
         description,
         eventType
       )) {
-        if (event.type === 'progress' || event.type === 'tool_call') {
+        if (event.type === 'progress' || event.type === 'tool_start') {
           setProgress(event.message);
         } else if (event.type === 'success') {
-          if (event.data?.interaction) {
-            addInteraction(componentId, event.data.interaction);
+          const interaction = event.data?.result as Interaction | undefined;
+          if (interaction) {
+            addInteraction(componentId, interaction);
             setDescription('');
             setShowAddForm(false);
             setProgress('');
@@ -91,7 +92,7 @@ export function InteractionPanel({ componentId, componentName, interactions = []
 
     try {
       for await (const event of editComponentStream(componentName, editDescription)) {
-        if (event.type === 'progress' || event.type === 'tool_call') {
+        if (event.type === 'progress' || event.type === 'tool_start') {
           setEditProgress(event.message);
         } else if (event.type === 'success') {
           setEditSuccess(`Component '${componentName}' updated successfully!`);
