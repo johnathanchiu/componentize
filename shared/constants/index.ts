@@ -11,10 +11,9 @@ export const MODEL_NAME = 'claude-sonnet-4-5-20250929';
 export const MAX_TOKENS = 4096;
 export const MAX_ITERATIONS = 5;
 
-// File Paths (relative to project root)
-export const GENERATED_DIR = 'generated';
-export const COMPONENTS_DIR = 'generated/components';
-export const PAGES_DIR = 'generated/pages';
+// File Paths (relative to server directory)
+export const COMPONENTS_DIR = '.components';
+export const PAGES_DIR = '.pages';
 
 // Component Constraints
 export const MIN_COMPONENT_WIDTH = 100;
