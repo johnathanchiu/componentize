@@ -1,10 +1,9 @@
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { useState } from 'react';
-import { ComponentLibrary } from './components/ComponentLibrary';
+import { LeftPanel } from './components/LeftPanel';
 import { DragDropCanvas } from './components/DragDropCanvas';
 import { ExportButton } from './components/ExportButton';
-import { GenerationPanel } from './components/GenerationPanel';
 import { CodePreviewPanel } from './components/CodePreviewPanel';
 import { useCanvasStore } from './store/canvasStore';
 
@@ -68,12 +67,10 @@ function App() {
 
         {/* Main content area */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Left sidebar - Components Library only */}
-          <div className="w-64 border-r border-neutral-200 bg-white flex flex-col">
-            <ComponentLibrary />
-          </div>
+          {/* Left panel - Tabbed (Create/Library) */}
+          <LeftPanel />
 
-          {/* Canvas area */}
+          {/* Canvas area - full height */}
           <div className="flex-1 min-w-0">
             <DragDropCanvas />
           </div>
@@ -81,9 +78,6 @@ function App() {
           {/* Right panel - Code preview when editing */}
           <CodePreviewPanel />
         </div>
-
-        {/* Bottom panel - Generation interface */}
-        <GenerationPanel />
       </div>
 
       {/* Drag overlay */}

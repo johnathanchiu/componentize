@@ -1,18 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { Wand2, Loader2, ChevronUp, ChevronDown, X, Pencil, Wrench } from 'lucide-react';
-import { generateComponentStream, editComponentStream } from '../lib/api';
+import { Wand2, Loader2, X, Pencil, Wrench, RefreshCw } from 'lucide-react';
+import { useDraggable } from '@dnd-kit/core';
+import { generateComponentStream, editComponentStream, listComponents } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
 import { StatusOrb } from './StatusOrb';
 import { Timeline } from './Timeline';
 import { config } from '../config';
 
-// Consistent button styles
-const BUTTON_STYLES = {
-  primary: 'bg-neutral-900 hover:bg-neutral-800',
-  secondary: 'bg-purple-600 hover:bg-purple-700',
-} as const;
+// ============================================
+// CreateTab - Component generation/editing
+// ============================================
 
-export function GenerationPanel() {
+function CreateTab() {
   const [prompt, setPrompt] = useState('');
   const [componentName, setComponentName] = useState('');
   const [error, setError] = useState('');
@@ -219,20 +218,20 @@ Call read_component to see the code, find the bug, and call update_component wit
 
   const getPlaceholder = () => {
     if (generationMode === 'edit') {
-      return `Describe changes to ${editingComponentName}...`;
+      return `Describe changes...`;
     }
     return 'Describe your component...';
   };
 
   return (
-    <div className="border-t border-neutral-200 bg-white">
-      {/* Streaming area - expandable */}
+    <div className="flex flex-col h-full">
+      {/* Streaming area - scrollable */}
       {showStreamingArea && (
-        <div className="border-b border-neutral-100 animate-fade-in">
-          <div className="flex items-center justify-between px-4 py-2 bg-neutral-50">
+        <div className="border-b border-neutral-100 max-h-48 overflow-y-auto">
+          <div className="flex items-center justify-between px-3 py-2 bg-neutral-50 sticky top-0">
             <div className="flex items-center gap-2">
               <StatusOrb status={streamStatus} />
-              <span className="text-sm font-medium text-neutral-700">
+              <span className="text-xs font-medium text-neutral-700">
                 {streamStatus === 'success'
                   ? `${currentComponentName} ${generationMode === 'create' ? 'created' : 'updated'}!`
                   : streamStatus === 'error'
@@ -240,16 +239,9 @@ Call read_component to see the code, find the bug, and call update_component wit
                   : `${getModeLabel()} ${currentComponentName}...`}
               </span>
             </div>
-            <button
-              onClick={() => setStreamPanelExpanded(false)}
-              className="p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
-              aria-label="Collapse panel"
-            >
-              <ChevronDown className="w-4 h-4" />
-            </button>
           </div>
 
-          <div className="px-4 py-2">
+          <div className="px-3 py-2">
             <Timeline events={streamingEvents} />
           </div>
 
@@ -263,67 +255,61 @@ Call read_component to see the code, find the bug, and call update_component wit
         </div>
       )}
 
-      {/* Collapsed streaming indicator */}
-      {!isStreamPanelExpanded && streamingEvents.length > 0 && !isGenerating && (
-        <button
-          onClick={() => setStreamPanelExpanded(true)}
-          className="w-full flex items-center justify-center gap-2 px-4 py-1.5 bg-neutral-50 border-b border-neutral-100 text-sm text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
-        >
-          <StatusOrb status={streamStatus} size="sm" />
-          <span>Show log</span>
-          <ChevronUp className="w-3.5 h-3.5" />
-        </button>
-      )}
+      {/* Spacer to push form to bottom */}
+      <div className="flex-1" />
 
-      {/* Mode indicator for edit/fix */}
-      {isEditMode && (
-        <div className="flex items-center justify-between px-4 py-2 bg-purple-50 border-b border-purple-100">
-          <div className="flex items-center gap-2 text-purple-700">
+      {/* Form area - at bottom */}
+      <div className="p-3 border-t border-neutral-100">
+        {/* Edit mode indicator */}
+        {isEditMode && (
+          <div className="flex items-center gap-2 mb-3 px-2 py-1.5 bg-purple-50 rounded-lg">
             {getModeIcon()}
-            <span className="text-sm font-medium">
+            <span className="text-sm text-purple-700 font-medium flex-1 truncate">
               {generationMode === 'edit' ? 'Editing' : 'Fixing'}: {editingComponentName}
             </span>
+            <button
+              onClick={handleCancel}
+              className="p-0.5 text-purple-400 hover:text-purple-600 transition-colors"
+              aria-label="Cancel"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            onClick={handleCancel}
-            className="p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
-            aria-label="Cancel"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+        )}
 
-      {/* Prompt bar - hidden during auto-fix */}
-      {generationMode !== 'fix' && (
-        <div className="flex items-center gap-3 px-4 py-3 min-w-0">
-          {generationMode === 'create' && (
-            <input
-              type="text"
-              value={componentName}
-              onChange={(e) => setComponentName(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="ComponentName"
-              className="w-40 flex-shrink-0 px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
-              disabled={isGenerating}
-            />
-          )}
-
+        {/* Component name (create mode only) */}
+        {generationMode === 'create' && (
           <input
             type="text"
+            value={componentName}
+            onChange={(e) => setComponentName(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="ComponentName"
+            className="w-full px-3 py-2 mb-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
+            disabled={isGenerating}
+          />
+        )}
+
+        {/* Prompt textarea - only show when not in fix mode */}
+        {generationMode !== 'fix' && (
+          <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={getPlaceholder()}
-            className="flex-1 min-w-0 px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
+            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
+            rows={3}
             disabled={isGenerating}
           />
+        )}
 
+        {/* Generate button */}
+        {generationMode !== 'fix' && (
           <button
             onClick={handleGenerate}
             disabled={isGenerating || !prompt.trim() || (generationMode === 'create' && !componentName.trim())}
-            className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap ${
-              isEditMode ? BUTTON_STYLES.secondary : BUTTON_STYLES.primary
+            className={`w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 text-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+              isEditMode ? 'bg-purple-600 hover:bg-purple-700' : 'bg-neutral-900 hover:bg-neutral-800'
             }`}
           >
             {isGenerating ? (
@@ -333,15 +319,155 @@ Call read_component to see the code, find the bug, and call update_component wit
             )}
             <span>{getButtonLabel()}</span>
           </button>
-        </div>
-      )}
+        )}
 
-      {/* Error message */}
-      {error && (
-        <div className="mx-4 mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          {error}
-        </div>
-      )}
+        {/* Error message */}
+        {error && (
+          <div className="mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+            {error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// LibraryTab - Component library with previews
+// ============================================
+
+function DraggableComponentCard({ name }: { name: string }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `library-${name}`,
+    data: { componentName: name, source: 'library' },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`rounded-lg border border-neutral-200 overflow-hidden cursor-grab active:cursor-grabbing hover:border-neutral-300 transition-colors ${
+        isDragging ? 'opacity-50' : ''
+      }`}
+    >
+      {/* Preview iframe - 120px height */}
+      <div className="h-[120px] overflow-hidden bg-neutral-50 pointer-events-none">
+        <iframe
+          src={`${config.apiBaseUrl}/preview/${name}`}
+          className="w-full h-full border-none"
+          sandbox="allow-scripts"
+          title={`Preview of ${name}`}
+        />
+      </div>
+
+      {/* Component name label */}
+      <div className="px-3 py-2 bg-white border-t border-neutral-100">
+        <span className="text-sm font-medium text-neutral-900">{name}</span>
+      </div>
+    </div>
+  );
+}
+
+function LibraryTab() {
+  const { availableComponents, setAvailableComponents } = useCanvasStore();
+
+  const loadComponents = async () => {
+    try {
+      const result = await listComponents();
+      if (result.status === 'success' && result.components) {
+        setAvailableComponents(result.components);
+      }
+    } catch (err) {
+      console.error('Failed to load components:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadComponents();
+  }, []);
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header with refresh */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-100">
+        <span className="text-xs text-neutral-500">
+          {availableComponents.length} component{availableComponents.length !== 1 ? 's' : ''}
+        </span>
+        <button
+          onClick={loadComponents}
+          className="p-1 hover:bg-neutral-100 rounded transition-colors"
+          title="Refresh components"
+        >
+          <RefreshCw className="w-3.5 h-3.5 text-neutral-400" />
+        </button>
+      </div>
+
+      {/* Component list with previews */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {availableComponents.map((component) => (
+          <DraggableComponentCard
+            key={component.name}
+            name={component.name}
+          />
+        ))}
+
+        {availableComponents.length === 0 && (
+          <div className="text-center text-neutral-400 py-8">
+            <p className="text-sm">No components yet</p>
+            <p className="text-xs mt-1">Switch to Create tab to make one</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// LeftPanel - Main tabbed container
+// ============================================
+
+export function LeftPanel() {
+  const [activeTab, setActiveTab] = useState<'create' | 'library'>('library');
+  const { generationMode } = useCanvasStore();
+
+  // Auto-switch to Create tab when editing/fixing
+  useEffect(() => {
+    if (generationMode === 'edit' || generationMode === 'fix') {
+      setActiveTab('create');
+    }
+  }, [generationMode]);
+
+  return (
+    <div className="w-72 border-r border-neutral-200 bg-white flex flex-col h-full">
+      {/* Tab headers */}
+      <div className="flex border-b border-neutral-200">
+        <button
+          onClick={() => setActiveTab('create')}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+            activeTab === 'create'
+              ? 'text-neutral-900 border-b-2 border-neutral-900'
+              : 'text-neutral-500 hover:text-neutral-700'
+          }`}
+        >
+          Create
+        </button>
+        <button
+          onClick={() => setActiveTab('library')}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+            activeTab === 'library'
+              ? 'text-neutral-900 border-b-2 border-neutral-900'
+              : 'text-neutral-500 hover:text-neutral-700'
+          }`}
+        >
+          Library
+        </button>
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-hidden">
+        {activeTab === 'create' ? <CreateTab /> : <LibraryTab />}
+      </div>
     </div>
   );
 }
