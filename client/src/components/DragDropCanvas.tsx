@@ -52,12 +52,21 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onDel
 
   // Reload iframe when fix completes successfully
   useEffect(() => {
+    console.log('[CanvasItem] Fix status check:', {
+      generationMode,
+      editingComponentName,
+      componentName,
+      streamStatus,
+      hasIframe: !!iframeRef.current
+    });
+
     if (
       generationMode === 'fix' &&
       editingComponentName === componentName &&
       streamStatus === 'success' &&
       iframeRef.current
     ) {
+      console.log('[CanvasItem] Reloading iframe for', componentName);
       // Small delay to ensure backend has reloaded
       setTimeout(() => {
         if (iframeRef.current) {

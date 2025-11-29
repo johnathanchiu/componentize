@@ -82,9 +82,18 @@ export class PreviewService {
             }
         });
     </script>
-    <script type="text/babel">
+    <script>
+        // Register TSX preset for TypeScript + React support
+        Babel.registerPreset('tsx', {
+            presets: [
+                [Babel.availablePresets['typescript'], { allExtensions: true, isTSX: true }],
+                [Babel.availablePresets['react']]
+            ]
+        });
+    </script>
+    <script type="text/babel" data-presets="tsx">
         try {
-            const { useState, useEffect, useRef } = React;
+            const { useState, useEffect, useRef, useCallback, useMemo, useContext, useReducer } = React;
 
             ${cleanedCode}
 
