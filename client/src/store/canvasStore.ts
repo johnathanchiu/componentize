@@ -34,6 +34,7 @@ interface CanvasStore {
   generationMode: 'create' | 'edit' | 'fix';
   editingComponentName: string | null;  // Which component is being edited
   pendingFixError: ErrorContext | null;  // Error to auto-fix
+  componentVersions: Record<string, number>;  // Track versions for iframe refresh
   addStreamingEvent: (event: StreamEvent) => void;
   clearStreamingEvents: () => void;
   setStreamStatus: (status: StreamStatus) => void;
@@ -42,6 +43,7 @@ interface CanvasStore {
   setGenerationMode: (mode: 'create' | 'edit' | 'fix') => void;
   setEditingComponentName: (name: string | null) => void;
   setPendingFixError: (error: ErrorContext | null) => void;
+  incrementComponentVersion: (componentName: string) => void;
   startEditing: (componentName: string) => void;
   startFixing: (componentName: string, error?: ErrorContext) => void;
 
@@ -106,6 +108,7 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
   generationMode: 'create',
   editingComponentName: null,
   pendingFixError: null,
+  componentVersions: {},
   addStreamingEvent: (event) =>
     set((state) => ({
       streamingEvents: [...state.streamingEvents, event],
@@ -124,6 +127,13 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
   setGenerationMode: (mode) => set({ generationMode: mode }),
   setEditingComponentName: (name) => set({ editingComponentName: name }),
   setPendingFixError: (error) => set({ pendingFixError: error }),
+  incrementComponentVersion: (componentName) =>
+    set((state) => ({
+      componentVersions: {
+        ...state.componentVersions,
+        [componentName]: (state.componentVersions[componentName] || 0) + 1,
+      },
+    })),
   startEditing: (componentName) => set({
     generationMode: 'edit',
     editingComponentName: componentName,

@@ -32,7 +32,10 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onEdi
 
   const [componentError, setComponentError] = useState<{ message: string; stack?: string } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const { isGenerating, generationMode, editingComponentName, streamStatus } = useCanvasStore();
+  const { isGenerating, generationMode, editingComponentName, componentVersions } = useCanvasStore();
+
+  // Get version for this component (used to bust iframe cache)
+  const componentVersion = componentVersions[componentName] || 0;
 
   // Track if this component is currently being fixed
   const isBeingFixed = generationMode === 'fix' && editingComponentName === componentName && isGenerating;
@@ -51,32 +54,10 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onEdi
     return () => window.removeEventListener('message', handleMessage);
   }, [componentName]);
 
-  // Reload iframe when fix completes successfully
+  // Clear error when component version changes (successful edit/fix)
   useEffect(() => {
-    console.log('[CanvasItem] Fix status check:', {
-      generationMode,
-      editingComponentName,
-      componentName,
-      streamStatus,
-      hasIframe: !!iframeRef.current
-    });
-
-    if (
-      generationMode === 'fix' &&
-      editingComponentName === componentName &&
-      streamStatus === 'success' &&
-      iframeRef.current
-    ) {
-      console.log('[CanvasItem] Reloading iframe for', componentName);
-      // Small delay to ensure backend has reloaded
-      setTimeout(() => {
-        if (iframeRef.current) {
-          iframeRef.current.src = iframeRef.current.src;
-        }
-        setComponentError(null);
-      }, 500);
-    }
-  }, [streamStatus, generationMode, editingComponentName, componentName]);
+    setComponentError(null);
+  }, [componentVersion]);
 
   const handleFixErrors = () => {
     if (!componentError) return;
@@ -177,7 +158,7 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onEdi
         {/* Iframe rendering the actual component */}
         <iframe
           ref={iframeRef}
-          src={`${config.apiBaseUrl}/preview/${componentName}`}
+          src={`${config.apiBaseUrl}/preview/${componentName}?v=${componentVersion}`}
           className="w-full h-full border-none pointer-events-auto"
           sandbox="allow-scripts"
           title={`Preview of ${componentName}`}

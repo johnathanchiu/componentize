@@ -1,4 +1,4 @@
-import { Brain, Wrench, CheckCircle, XCircle } from 'lucide-react';
+import { Brain, Wrench, CheckCircle, XCircle, Sparkles, Pencil, WrenchIcon } from 'lucide-react';
 import type { StreamEvent } from '../types';
 
 interface TimelineEventProps {
@@ -6,6 +6,29 @@ interface TimelineEventProps {
 }
 
 export function TimelineEvent({ event }: TimelineEventProps) {
+  // Session divider - render differently
+  if (event.type === 'session_start') {
+    const getModeIcon = () => {
+      switch (event.data?.mode) {
+        case 'create': return <Sparkles className="w-3 h-3" />;
+        case 'edit': return <Pencil className="w-3 h-3" />;
+        case 'fix': return <WrenchIcon className="w-3 h-3" />;
+        default: return <Sparkles className="w-3 h-3" />;
+      }
+    };
+
+    return (
+      <div className="flex items-center gap-2 py-2 my-1">
+        <div className="flex-1 h-px bg-neutral-200" />
+        <div className="flex items-center gap-1.5 px-2 py-1 bg-neutral-100 rounded-full text-xs text-neutral-600 font-medium">
+          {getModeIcon()}
+          <span>{event.message}</span>
+        </div>
+        <div className="flex-1 h-px bg-neutral-200" />
+      </div>
+    );
+  }
+
   const getEventStyle = () => {
     switch (event.type) {
       case 'thinking':

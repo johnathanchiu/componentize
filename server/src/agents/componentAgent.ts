@@ -96,6 +96,7 @@ export class ComponentAgent extends BaseAgent {
             message: `Component '${name}' code:`,
             code: result.content,
             component_name: name,
+            action: 'read',  // Mark as read action so we don't stop the loop
           };
         }
         return {
@@ -166,9 +167,11 @@ Start now.`
       }
     ];
 
-    // Run agent loop
+    // Run agent loop - only stop on successful update, not on read
     yield* this.runAgentLoop(messages, (result) => {
-      return result.status === 'success' && result.component_name === componentName;
+      return result.status === 'success' &&
+             result.component_name === componentName &&
+             result.action !== 'read';
     });
   }
 }

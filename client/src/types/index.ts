@@ -67,6 +67,7 @@ export interface GenerateInteractionResponse extends APIResponse {
 
 // Streaming events
 export type StreamEventType =
+  | 'session_start' // New generation/edit session started
   | 'progress'      // Generic status updates
   | 'thinking'      // Claude's reasoning text (streamed in chunks)
   | 'tool_start'    // Tool call initiated (with tool name & params)
@@ -89,5 +90,7 @@ export interface StreamEvent {
     maxIterations?: number;     // Max iterations allowed
     status?: 'success' | 'error';  // For tool_result
     result?: unknown;           // Tool result data
+    mode?: 'create' | 'edit' | 'fix';  // For session_start - what type of session
+    componentName?: string;     // For session_start - target component
   };
 }

@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Wand2, Loader2, X, Pencil, Wrench, RefreshCw } from 'lucide-react';
+import { Wand2, Loader2, X, Pencil, Wrench, RefreshCw, Trash2 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { generateComponentStream, editComponentStream, listComponents } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
+import { useResizablePanel } from '../hooks/useResizablePanel';
+import { ResizeHandle } from './ResizeHandle';
 import { StatusOrb } from './StatusOrb';
 import { Timeline } from './Timeline';
 import { config } from '../config';
@@ -36,6 +38,7 @@ function CreateTab() {
     setGenerationMode,
     setEditingComponentName,
     setPendingFixError,
+    incrementComponentVersion,
   } = useCanvasStore();
 
   // Reset form when switching modes
@@ -66,10 +69,11 @@ function CreateTab() {
       addStreamingEvent(event);
 
       if (event.type === 'success') {
+        // Increment version to trigger iframe refresh in canvas
+        incrementComponentVersion(targetName);
+
         if (isCreateMode) {
           addAvailableComponent({ name: targetName, filepath: '' });
-        } else if (iframeRef.current) {
-          iframeRef.current.src = `${config.apiBaseUrl}/preview/${targetName}?t=${Date.now()}`;
         }
 
         // Clear form after delay
@@ -96,12 +100,13 @@ function CreateTab() {
   // Core function to run a fix operation
   const runFix = async (targetName: string, errorMessage: string, errorStack?: string) => {
     setError('');
-    clearStreamingEvents();
 
+    // Add session divider instead of clearing
     addStreamingEvent({
-      type: 'thinking',
-      message: `Fixing error: ${errorMessage}`,
+      type: 'session_start',
+      message: `Fixing ${targetName}`,
       timestamp: Date.now(),
+      data: { mode: 'fix', componentName: targetName },
     });
 
     setCurrentComponentName(targetName);
@@ -152,8 +157,16 @@ Call read_component to see the code, find the bug, and call update_component wit
     }
 
     setError('');
-    clearStreamingEvents();
     const targetName = generationMode === 'create' ? componentName : editingComponentName!;
+
+    // Add session divider instead of clearing
+    const modeLabel = generationMode === 'create' ? 'Creating' : 'Editing';
+    addStreamingEvent({
+      type: 'session_start',
+      message: `${modeLabel} ${targetName}`,
+      timestamp: Date.now(),
+      data: { mode: generationMode, componentName: targetName },
+    });
 
     setCurrentComponentName(targetName);
     setIsGenerating(true);
@@ -185,8 +198,6 @@ Call read_component to see the code, find the bug, and call update_component wit
     setEditingComponentName(null);
     setPrompt('');
     setError('');
-    clearStreamingEvents();
-    setStreamPanelExpanded(false);
   };
 
   // UI helper functions
@@ -225,10 +236,10 @@ Call read_component to see the code, find the bug, and call update_component wit
 
   return (
     <div className="flex flex-col h-full">
-      {/* Streaming area - scrollable */}
-      {showStreamingArea && (
-        <div className="border-b border-neutral-100 max-h-48 overflow-y-auto">
-          <div className="flex items-center justify-between px-3 py-2 bg-neutral-50 sticky top-0">
+      {/* Streaming area - fills available space */}
+      {showStreamingArea ? (
+        <div className="flex-1 min-h-0 flex flex-col border-b border-neutral-100">
+          <div className="flex items-center justify-between px-3 py-2 bg-neutral-50 flex-shrink-0">
             <div className="flex items-center gap-2">
               <StatusOrb status={streamStatus} />
               <span className="text-xs font-medium text-neutral-700">
@@ -239,9 +250,18 @@ Call read_component to see the code, find the bug, and call update_component wit
                   : `${getModeLabel()} ${currentComponentName}...`}
               </span>
             </div>
+            {!isGenerating && streamingEvents.length > 0 && (
+              <button
+                onClick={clearStreamingEvents}
+                className="p-1 hover:bg-neutral-200 rounded transition-colors"
+                title="Clear history"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-neutral-400" />
+              </button>
+            )}
           </div>
 
-          <div className="px-3 py-2">
+          <div className="flex-1 overflow-y-auto px-3 py-2">
             <Timeline events={streamingEvents} />
           </div>
 
@@ -253,10 +273,10 @@ Call read_component to see the code, find the bug, and call update_component wit
             />
           )}
         </div>
+      ) : (
+        /* Spacer to push form to bottom when no streaming */
+        <div className="flex-1" />
       )}
-
-      {/* Spacer to push form to bottom */}
-      <div className="flex-1" />
 
       {/* Form area - at bottom */}
       <div className="p-3 border-t border-neutral-100">
@@ -341,6 +361,8 @@ function DraggableComponentCard({ name }: { name: string }) {
     id: `library-${name}`,
     data: { componentName: name, source: 'library' },
   });
+  const { componentVersions } = useCanvasStore();
+  const componentVersion = componentVersions[name] || 0;
 
   return (
     <div
@@ -354,7 +376,7 @@ function DraggableComponentCard({ name }: { name: string }) {
       {/* Preview iframe - 120px height */}
       <div className="h-[120px] overflow-hidden bg-neutral-50 pointer-events-none">
         <iframe
-          src={`${config.apiBaseUrl}/preview/${name}`}
+          src={`${config.apiBaseUrl}/preview/${name}?v=${componentVersion}`}
           className="w-full h-full border-none"
           sandbox="allow-scripts"
           title={`Preview of ${name}`}
@@ -431,6 +453,15 @@ export function LeftPanel() {
   const [activeTab, setActiveTab] = useState<'create' | 'library'>('library');
   const { generationMode } = useCanvasStore();
 
+  const { panelSize, isResizing, handleMouseDown } = useResizablePanel({
+    storageKey: 'left-panel-width',
+    direction: 'horizontal',
+    defaultSize: 288,
+    minSize: 200,
+    maxSize: 500,
+    resizeFrom: 'right',
+  });
+
   // Auto-switch to Create tab when editing/fixing
   useEffect(() => {
     if (generationMode === 'edit' || generationMode === 'fix') {
@@ -439,11 +470,15 @@ export function LeftPanel() {
   }, [generationMode]);
 
   return (
-    <div className="w-72 border-r border-neutral-200 bg-white flex flex-col h-full">
-      {/* Tab headers */}
+    <div
+      className="relative border-r border-neutral-200 bg-white flex flex-col h-full"
+      style={{ width: panelSize }}
+    >
+      {/* Tab headers - hover to switch */}
       <div className="flex border-b border-neutral-200">
         <button
           onClick={() => setActiveTab('create')}
+          onMouseEnter={() => setActiveTab('create')}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
             activeTab === 'create'
               ? 'text-neutral-900 border-b-2 border-neutral-900'
@@ -454,6 +489,7 @@ export function LeftPanel() {
         </button>
         <button
           onClick={() => setActiveTab('library')}
+          onMouseEnter={() => setActiveTab('library')}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
             activeTab === 'library'
               ? 'text-neutral-900 border-b-2 border-neutral-900'
@@ -468,6 +504,14 @@ export function LeftPanel() {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'create' ? <CreateTab /> : <LibraryTab />}
       </div>
+
+      {/* Resize handle */}
+      <ResizeHandle
+        isResizing={isResizing}
+        onMouseDown={handleMouseDown}
+        direction="horizontal"
+        position="right"
+      />
     </div>
   );
 }
