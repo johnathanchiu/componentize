@@ -153,6 +153,14 @@ export async function getComponentCode(componentName: string): Promise<any> {
   return response.json();
 }
 
+/**
+ * Get component code in a project
+ */
+export async function getProjectComponentCode(projectId: string, componentName: string): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/components/${componentName}/code`);
+  return response.json();
+}
+
 // ============================================
 // Project API Functions
 // ============================================
@@ -279,4 +287,38 @@ export async function* editProjectComponentStream(
       }
     }
   }
+}
+
+// ============================================
+// Canvas API Functions
+// ============================================
+
+export interface CanvasComponentData {
+  id: string;
+  componentName: string;
+  position: { x: number; y: number };
+  size?: { width: number; height: number };
+  interactions?: any[];
+}
+
+/**
+ * Get canvas state for a project
+ */
+export async function getProjectCanvas(projectId: string): Promise<{ status: string; components: CanvasComponentData[] }> {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/canvas`);
+  return response.json();
+}
+
+/**
+ * Save canvas state for a project
+ */
+export async function saveProjectCanvas(projectId: string, components: CanvasComponentData[]): Promise<{ status: string }> {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/canvas`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ components }),
+  });
+  return response.json();
 }

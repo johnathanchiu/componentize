@@ -8,6 +8,7 @@ import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ResizeHandle } from './ResizeHandle';
 import { StatusOrb } from './StatusOrb';
 import { Timeline } from './Timeline';
+import type { Size } from '../types/index';
 
 // Vite dev server port (always 5100 for shared workspace)
 const VITE_SERVER_PORT = 5100;
@@ -377,9 +378,38 @@ function DraggableComponentCard({ name, projectId }: { name: string; projectId: 
   });
   const { componentVersions } = useCanvasStore();
   const componentVersion = componentVersions[name] || 0;
+  const [previewSize, setPreviewSize] = useState<Size | null>(null);
 
   // Preview URL uses Vite dev server with project and component params
   const previewUrl = `http://localhost:${VITE_SERVER_PORT}/?project=${projectId}&component=${name}&v=${componentVersion}`;
+
+  // Listen for COMPONENT_SIZE messages to auto-size the preview
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.componentName === name && event.data.type === 'COMPONENT_SIZE') {
+        setPreviewSize(event.data.size);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [name]);
+
+  // Reset size when component version changes
+  useEffect(() => {
+    setPreviewSize(null);
+  }, [componentVersion]);
+
+  // Calculate scaled preview that fits within max bounds
+  const maxWidth = 240; // panel width minus padding
+  const maxHeight = 120; // reasonable max
+  const scale = previewSize ? Math.min(
+    maxWidth / previewSize.width,
+    maxHeight / previewSize.height,
+    1 // don't scale up
+  ) : 1;
+
+  // Display height is scaled natural size, or fallback
+  const displayHeight = previewSize ? Math.ceil(previewSize.height * scale) : 80;
 
   return (
     <div
@@ -390,11 +420,23 @@ function DraggableComponentCard({ name, projectId }: { name: string; projectId: 
         isDragging ? 'opacity-50' : ''
       }`}
     >
-      {/* Preview iframe - 120px height */}
-      <div className="h-[120px] overflow-hidden bg-neutral-50 pointer-events-none">
+      {/* Preview iframe - auto-sized based on component content */}
+      <div
+        className="overflow-hidden bg-neutral-50 pointer-events-none flex items-center justify-center"
+        style={{
+          height: displayHeight,
+          minHeight: 40,
+        }}
+      >
         <iframe
           src={previewUrl}
-          className="w-full h-full border-none"
+          className="border-none"
+          style={{
+            width: previewSize?.width || '100%',
+            height: previewSize?.height || '100%',
+            transformOrigin: 'top left',
+            transform: scale !== 1 ? `scale(${scale})` : undefined,
+          }}
           sandbox="allow-scripts"
           title={`Preview of ${name}`}
         />

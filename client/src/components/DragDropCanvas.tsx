@@ -1,5 +1,5 @@
 import { useDroppable } from '@dnd-kit/core';
-import { Trash2, AlertCircle, Wrench, Pencil } from 'lucide-react';
+import { Trash2, AlertCircle, Wrench, Pencil, GripHorizontal } from 'lucide-react';
 import { useCanvasStore } from '../store/canvasStore';
 import { useProjectStore } from '../store/projectStore';
 import { CSS } from '@dnd-kit/utilities';
@@ -35,6 +35,7 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
   });
 
   const [componentError, setComponentError] = useState<{ message: string; stack?: string } | null>(null);
+  const [naturalSize, setNaturalSize] = useState<Size | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { isGenerating, generationMode, editingComponentName, componentVersions } = useCanvasStore();
 
@@ -47,29 +48,49 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
   // Track if this component is currently being fixed
   const isBeingFixed = generationMode === 'fix' && editingComponentName === componentName && isGenerating;
 
-  // Listen for error messages from iframe
+  // Listen for messages from iframe (errors, loads, and size reports)
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'COMPONENT_ERROR' && event.data.componentName === componentName) {
+      if (event.data.componentName !== componentName) return;
+
+      if (event.data.type === 'COMPONENT_ERROR') {
         setComponentError(event.data.error);
-      } else if (event.data.type === 'COMPONENT_LOADED' && event.data.componentName === componentName) {
+      } else if (event.data.type === 'COMPONENT_LOADED') {
         setComponentError(null);
+      } else if (event.data.type === 'COMPONENT_SIZE') {
+        // Capture the component's natural size
+        const { width, height } = event.data.size;
+        setNaturalSize({ width, height });
+        // Also update the store if no size was set yet (initial placement)
+        if (!size) {
+          onResize(width, height);
+        }
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [componentName]);
+  }, [componentName, size, onResize]);
 
-  // Clear error when component version changes (successful edit/fix)
+  // Clear error and reset natural size when component version changes
   useEffect(() => {
     setComponentError(null);
+    setNaturalSize(null);
   }, [componentVersion]);
 
   const handleFixErrors = () => {
     if (!componentError) return;
     onFix(componentError.message, componentError.stack);
   };
+
+  // Use stored size (user resized), or natural size, or fallback
+  const displaySize = size || naturalSize || { width: 120, height: 40 };
+
+  // Calculate scale factor for when user has resized the component
+  // We use uniform scaling based on width to maintain aspect ratio
+  const scale = size && naturalSize && naturalSize.width > 0
+    ? size.width / naturalSize.width
+    : 1;
 
   const style = {
     position: 'absolute' as const,
@@ -78,27 +99,41 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
     transform: transform && !isDragging ? CSS.Transform.toString(transform) : undefined,
   };
 
-  const defaultSize = size || { width: 200, height: 100 };
-
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`group ${isDragging ? 'opacity-70' : ''}`}
-      onClick={onSelect}
+      className={`group ${isDragging ? 'opacity-50 z-50' : ''}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
     >
       {/* Floating action buttons - appear on hover */}
-      <div className="absolute -top-3 -right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-30 flex gap-1">
+      <div className="absolute -top-8 right-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-30 flex gap-1 items-center">
+        {/* Drag handle */}
+        <div
+          {...listeners}
+          {...attributes}
+          className="p-1.5 bg-neutral-700 hover:bg-neutral-800 rounded shadow-sm cursor-move"
+          title="Drag to move"
+        >
+          <GripHorizontal className="w-3 h-3 text-white" />
+        </div>
+        {/* Component name */}
+        <div className="px-2 py-1 bg-neutral-800 text-white text-[10px] font-medium rounded whitespace-nowrap">
+          {componentName}
+        </div>
         {/* Edit button */}
         <button
           onClick={(e) => {
             e.stopPropagation();
             onEdit();
           }}
-          className="p-1.5 bg-blue-600 hover:bg-blue-700 rounded-full shadow-lg"
+          className="p-1.5 bg-blue-500 hover:bg-blue-600 rounded shadow-sm"
           title="Edit component"
         >
-          <Pencil className="w-3.5 h-3.5 text-white" />
+          <Pencil className="w-3 h-3 text-white" />
         </button>
         {/* Delete button */}
         <button
@@ -106,22 +141,44 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
             e.stopPropagation();
             onDelete();
           }}
-          className="p-1.5 bg-red-600 hover:bg-red-700 rounded-full shadow-lg"
+          className="p-1.5 bg-red-500 hover:bg-red-600 rounded shadow-sm"
           title="Remove component"
         >
-          <Trash2 className="w-3.5 h-3.5 text-white" />
+          <Trash2 className="w-3 h-3 text-white" />
         </button>
       </div>
 
       <Resizable
-        size={defaultSize}
+        size={displaySize}
         onResizeStop={(_e, _direction, _ref, d) => {
-          const newWidth = defaultSize.width + d.width;
-          const newHeight = defaultSize.height + d.height;
+          const newWidth = displaySize.width + d.width;
+          const newHeight = displaySize.height + d.height;
           onResize(newWidth, newHeight);
         }}
-        minWidth={100}
-        minHeight={60}
+        minWidth={40}
+        minHeight={24}
+        className={`relative rounded transition-shadow duration-150 ${
+          isSelected
+            ? 'ring-2 ring-blue-500 ring-offset-1'
+            : 'ring-0 group-hover:ring-1 group-hover:ring-neutral-300'
+        }`}
+        handleStyles={{
+          bottomRight: {
+            bottom: 0,
+            right: 0,
+            width: 12,
+            height: 12,
+            cursor: 'se-resize',
+          },
+        }}
+        handleClasses={{
+          bottomRight: 'opacity-0 group-hover:opacity-100 transition-opacity',
+        }}
+        handleComponent={{
+          bottomRight: (
+            <div className="w-3 h-3 bg-blue-500 rounded-tl" />
+          ),
+        }}
         enable={{
           top: false,
           right: false,
@@ -132,88 +189,63 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
           bottomLeft: false,
           topLeft: false,
         }}
-        handleClasses={{
-          bottomRight: 'resize-handle resize-handle-corner',
-        }}
-        className={`border-2 rounded-lg shadow-sm bg-white ${
-          isSelected ? 'border-neutral-900' : 'border-neutral-200'
-        } hover:border-neutral-400 transition-colors relative overflow-hidden`}
       >
-        {/* Draggable border overlay - appears on hover over edges */}
-        <div
-          {...listeners}
-          {...attributes}
-          className="absolute inset-0 pointer-events-none z-10"
-        >
-          {/* Top edge */}
-          <div className="absolute top-0 left-0 right-0 h-3 pointer-events-auto cursor-move opacity-0 group-hover:opacity-100" />
-          {/* Right edge - exclude bottom-right corner for resize handle */}
-          <div className="absolute top-0 right-0 bottom-12 w-3 pointer-events-auto cursor-move opacity-0 group-hover:opacity-100" />
-          {/* Bottom edge - exclude bottom-right corner for resize handle */}
-          <div className="absolute bottom-0 left-0 right-12 h-3 pointer-events-auto cursor-move opacity-0 group-hover:opacity-100" />
-          {/* Left edge */}
-          <div className="absolute top-0 left-0 bottom-0 w-3 pointer-events-auto cursor-move opacity-0 group-hover:opacity-100" />
+        {/* Iframe wrapper - clips overflow when scaling */}
+        <div className="w-full h-full overflow-hidden">
+          {/* Iframe renders at natural size, scaled to fit container */}
+          <iframe
+            ref={iframeRef}
+            src={previewUrl}
+            className="border-none bg-transparent"
+            style={{
+              width: naturalSize?.width || '100%',
+              height: naturalSize?.height || '100%',
+              transformOrigin: 'top left',
+              transform: scale !== 1 ? `scale(${scale})` : undefined,
+            }}
+            sandbox="allow-scripts"
+            title={`Preview of ${componentName}`}
+          />
         </div>
-
-        {/* Component name label - shows on hover */}
-        <div className="absolute top-0 left-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-20">
-          <div className="px-2 py-1 bg-neutral-900 text-white text-xs font-medium">
-            {componentName}
-          </div>
-        </div>
-
-        {/* Iframe rendering the actual component */}
-        <iframe
-          ref={iframeRef}
-          src={previewUrl}
-          className="w-full h-full border-none pointer-events-auto"
-          sandbox="allow-scripts"
-          title={`Preview of ${componentName}`}
-        />
 
         {/* Error overlay */}
         {componentError && (
-          <div className="absolute inset-0 bg-red-50 bg-opacity-95 flex flex-col items-center justify-center p-4 z-20 pointer-events-none">
-            <AlertCircle className="w-8 h-8 text-red-600 mb-2" />
-            <div className="text-sm font-semibold text-red-900 mb-1">Component Error</div>
-            <div className="text-xs text-red-700 text-center mb-3 max-w-full overflow-hidden">
+          <div className="absolute inset-0 bg-red-50/95 flex flex-col items-center justify-center p-2 z-20">
+            <AlertCircle className="w-6 h-6 text-red-500 mb-1" />
+            <div className="text-xs font-medium text-red-800 mb-1">Error</div>
+            <div className="text-[10px] text-red-600 text-center mb-2 max-w-full overflow-hidden line-clamp-2">
               {componentError.message}
             </div>
-
-            {/* Progress indicator - now shown in the bottom panel */}
-            {isBeingFixed && (
-              <div className="mb-3 px-3 py-1.5 bg-blue-100 border border-blue-300 rounded text-xs text-blue-800 max-w-full">
-                Fixing in progress... (see bottom panel)
-              </div>
-            )}
-
             <button
-              onClick={handleFixErrors}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleFixErrors();
+              }}
               disabled={isBeingFixed}
-              className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 pointer-events-auto"
+              className="px-2 py-1 bg-red-500 text-white rounded text-[10px] font-medium hover:bg-red-600 disabled:opacity-50 flex items-center gap-1"
             >
-              <Wrench className={`w-4 h-4 ${isBeingFixed ? 'animate-spin' : ''}`} />
-              {isBeingFixed ? 'Fixing...' : 'Fix with AI'}
+              <Wrench className={`w-3 h-3 ${isBeingFixed ? 'animate-spin' : ''}`} />
+              {isBeingFixed ? 'Fixing...' : 'Fix'}
             </button>
           </div>
         )}
-
-        {/* Interaction count badge - positioned at bottom */}
-        {interactions && interactions.length > 0 && (
-          <div className="absolute bottom-2 left-2 px-2 py-1 bg-neutral-700 text-white text-xs rounded-md shadow-sm pointer-events-none z-20">
-            {interactions.length} interaction{interactions.length !== 1 ? 's' : ''}
-          </div>
-        )}
-
-        {/* Interaction Panel */}
-        {isSelected && (
-          <InteractionPanel
-            componentId={id}
-            componentName={componentName}
-            interactions={interactions}
-          />
-        )}
       </Resizable>
+
+      {/* Interaction count badge */}
+      {interactions && interactions.length > 0 && (
+        <div className="absolute -bottom-5 left-0 px-1.5 py-0.5 bg-neutral-600 text-white text-[9px] rounded shadow-sm pointer-events-none z-20">
+          {interactions.length} interaction{interactions.length !== 1 ? 's' : ''}
+        </div>
+      )}
+
+      {/* Interaction Panel */}
+      {isSelected && (
+        <InteractionPanel
+          componentId={id}
+          componentName={componentName}
+          interactions={interactions}
+        />
+      )}
     </div>
   );
 }
@@ -248,6 +280,7 @@ export function DragDropCanvas() {
     <div className="h-full overflow-hidden">
       <div
         ref={setNodeRef}
+        data-canvas="true"
         className="relative w-full h-full overflow-auto"
         style={{
           backgroundColor: '#FAFAFA',

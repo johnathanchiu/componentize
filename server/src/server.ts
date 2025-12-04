@@ -319,6 +319,14 @@ server.get<{ Params: { id: string } }>('/api/projects/:id/components', async (re
 });
 
 /**
+ * Get component code in a project
+ */
+server.get<{ Params: { id: string; componentName: string } }>('/api/projects/:id/components/:componentName/code', async (request) => {
+  const { id, componentName } = request.params;
+  return await fileService.readProjectComponent(id, componentName);
+});
+
+/**
  * Generate a component in a project with streaming
  */
 server.post<{
@@ -417,6 +425,44 @@ server.get('/api/vite-server', async () => {
     port: viteDevServerService.getPort(),
     ready: viteDevServerService.isServerReady(),
   };
+});
+
+// ============================================================================
+// Canvas Endpoints
+// ============================================================================
+
+/**
+ * Get canvas state for a project
+ */
+server.get<{ Params: { id: string } }>('/api/projects/:id/canvas', async (request) => {
+  const { id } = request.params;
+  const components = await projectService.getCanvas(id);
+  return { status: 'success', components };
+});
+
+/**
+ * Save canvas state for a project
+ */
+server.put<{ Params: { id: string }; Body: { components: any[] } }>('/api/projects/:id/canvas', async (request, reply) => {
+  const { id } = request.params;
+  const { components } = request.body;
+
+  if (!Array.isArray(components)) {
+    return reply.code(400).send({
+      status: 'error',
+      message: 'components must be an array',
+    });
+  }
+
+  try {
+    await projectService.saveCanvas(id, components);
+    return { status: 'success' };
+  } catch (error) {
+    return reply.code(500).send({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to save canvas',
+    });
+  }
 });
 
 // ============================================================================

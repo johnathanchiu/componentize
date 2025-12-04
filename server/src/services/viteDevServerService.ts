@@ -2,7 +2,7 @@ import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 
 const VITE_PORT = 5100;
-const WORKSPACE_PATH = path.resolve(__dirname, '../../workspace');
+const WORKSPACE_PATH = path.resolve(__dirname, '../../.workspace');
 
 class ViteDevServerService {
   private process: ChildProcess | null = null;

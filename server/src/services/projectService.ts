@@ -10,6 +10,14 @@ export interface Project {
   updatedAt: string;
 }
 
+export interface CanvasComponent {
+  id: string;
+  componentName: string;
+  position: { x: number; y: number };
+  size?: { width: number; height: number };
+  interactions?: any[];
+}
+
 class ProjectService {
   /**
    * Get the path to the projects directory inside the workspace
@@ -137,6 +145,34 @@ class ProjectService {
     );
 
     return updatedProject;
+  }
+
+  /**
+   * Get the path to a project's canvas file
+   */
+  private getCanvasPath(projectId: string): string {
+    return path.join(this.getProjectDir(projectId), 'canvas.json');
+  }
+
+  /**
+   * Get the canvas state for a project
+   */
+  async getCanvas(projectId: string): Promise<CanvasComponent[]> {
+    try {
+      const canvasPath = this.getCanvasPath(projectId);
+      const content = await fs.readFile(canvasPath, 'utf-8');
+      return JSON.parse(content) as CanvasComponent[];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Save the canvas state for a project
+   */
+  async saveCanvas(projectId: string, components: CanvasComponent[]): Promise<void> {
+    const canvasPath = this.getCanvasPath(projectId);
+    await fs.writeFile(canvasPath, JSON.stringify(components, null, 2));
   }
 }
 
