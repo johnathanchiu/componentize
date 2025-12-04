@@ -1,15 +1,34 @@
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { LeftPanel } from './components/LeftPanel';
 import { DragDropCanvas } from './components/DragDropCanvas';
 import { ExportButton } from './components/ExportButton';
 import { CodePreviewPanel } from './components/CodePreviewPanel';
+import { ProjectsPage } from './components/projects/ProjectsPage';
 import { useCanvasStore } from './store/canvasStore';
+import { useProjectStore, type Project } from './store/projectStore';
+
+type View = 'projects' | 'editor';
 
 function App() {
-  const { addToCanvas, updatePosition, canvasComponents } = useCanvasStore();
+  const { addToCanvas, updatePosition, canvasComponents, clearCanvas } = useCanvasStore();
+  const { currentProject, setCurrentProject } = useProjectStore();
+  const [view, setView] = useState<View>('projects');
   const [activeComponentName, setActiveComponentName] = useState<string | null>(null);
+
+  const handleOpenProject = (project: Project) => {
+    setCurrentProject(project);
+    clearCanvas();
+    setView('editor');
+  };
+
+  const handleBackToProjects = () => {
+    setView('projects');
+    setCurrentProject(null);
+    clearCanvas();
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     const componentName = event.active.data.current?.componentName;
@@ -54,14 +73,30 @@ function App() {
     }
   };
 
+  // Show projects page
+  if (view === 'projects') {
+    return <ProjectsPage onOpenProject={handleOpenProject} />;
+  }
+
+  // Show editor with current project
   return (
     <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="h-screen bg-neutral-100 flex flex-col">
-        {/* Header - minimal */}
+        {/* Header */}
         <header className="bg-white border-b border-neutral-200 px-6 py-3 flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-neutral-900 tracking-tight">
-            Componentize
-          </h1>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleBackToProjects}
+              className="flex items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="text-sm">Projects</span>
+            </button>
+            <div className="h-4 w-px bg-neutral-200" />
+            <h1 className="text-lg font-semibold text-neutral-900 tracking-tight">
+              {currentProject?.name || 'Componentize'}
+            </h1>
+          </div>
           <ExportButton />
         </header>
 

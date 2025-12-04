@@ -1,17 +1,21 @@
 import { useDroppable } from '@dnd-kit/core';
 import { Trash2, AlertCircle, Wrench, Pencil } from 'lucide-react';
 import { useCanvasStore } from '../store/canvasStore';
+import { useProjectStore } from '../store/projectStore';
 import { CSS } from '@dnd-kit/utilities';
 import { useDraggable } from '@dnd-kit/core';
 import { InteractionPanel } from './InteractionPanel';
 import { Resizable } from 're-resizable';
 import type { Size } from '../types/index';
 import { useEffect, useState, useRef } from 'react';
-import { config } from '../config';
+
+// Vite dev server port (always 5100 for shared workspace)
+const VITE_SERVER_PORT = 5100;
 
 interface CanvasItemProps {
   id: string;
   componentName: string;
+  projectId: string;
   x: number;
   y: number;
   size?: Size;
@@ -24,7 +28,7 @@ interface CanvasItemProps {
   interactions?: any[];
 }
 
-function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onEdit, onDelete, onResize, onFix, interactions }: CanvasItemProps) {
+function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSelect, onEdit, onDelete, onResize, onFix, interactions }: CanvasItemProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `canvas-${id}`,
     data: { id, componentName, source: 'canvas' },
@@ -36,6 +40,9 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onEdi
 
   // Get version for this component (used to bust iframe cache)
   const componentVersion = componentVersions[componentName] || 0;
+
+  // Preview URL uses Vite dev server with project and component params
+  const previewUrl = `http://localhost:${VITE_SERVER_PORT}/?project=${projectId}&component=${componentName}&v=${componentVersion}`;
 
   // Track if this component is currently being fixed
   const isBeingFixed = generationMode === 'fix' && editingComponentName === componentName && isGenerating;
@@ -158,7 +165,7 @@ function CanvasItem({ id, componentName, x, y, size, isSelected, onSelect, onEdi
         {/* Iframe rendering the actual component */}
         <iframe
           ref={iframeRef}
-          src={`${config.apiBaseUrl}/preview/${componentName}?v=${componentVersion}`}
+          src={previewUrl}
           className="w-full h-full border-none pointer-events-auto"
           sandbox="allow-scripts"
           title={`Preview of ${componentName}`}
@@ -216,6 +223,7 @@ export function DragDropCanvas() {
     id: 'canvas',
   });
 
+  const { currentProject } = useProjectStore();
   const {
     canvasComponents,
     selectedComponentId,
@@ -255,12 +263,13 @@ export function DragDropCanvas() {
               <div className="text-sm">Drag from the library to start building</div>
             </div>
           </div>
-        ) : (
+        ) : currentProject ? (
           canvasComponents.map((item) => (
             <CanvasItem
               key={item.id}
               id={item.id}
               componentName={item.componentName}
+              projectId={currentProject.id}
               x={item.position.x}
               y={item.position.y}
               size={item.size}
@@ -273,7 +282,7 @@ export function DragDropCanvas() {
               interactions={item.interactions}
             />
           ))
-        )}
+        ) : null}
       </div>
     </div>
   );
