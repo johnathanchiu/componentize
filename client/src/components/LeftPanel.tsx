@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type ComponentType } from 'react';
 import { Wand2, Loader2, X, Pencil, Wrench, RefreshCw, Trash2 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
-import { generateProjectComponentStream, editProjectComponentStream, listProjectComponents } from '../lib/api';
+import { generateProjectComponentStream, editProjectComponentStream, listProjectComponents, deleteProjectComponent } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
 import { useProjectStore } from '../store/projectStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
@@ -369,12 +369,13 @@ Call read_component to see the code, find the bug, and call update_component wit
 // LibraryTab - Component library with previews
 // ============================================
 
-function DraggableComponentCard({ name, projectId }: { name: string; projectId: string }) {
+function DraggableComponentCard({ name, projectId, onDelete }: { name: string; projectId: string; onDelete: () => void }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `library-${name}`,
     data: { componentName: name, source: 'library' },
   });
   const { componentVersions } = useCanvasStore();
+  const [isDeleting, setIsDeleting] = useState(false);
   const componentVersion = componentVersions[name] || 0;
   const [Component, setComponent] = useState<ComponentType | null>(null);
   const [naturalSize, setNaturalSize] = useState<Size | null>(null);
@@ -427,10 +428,25 @@ function DraggableComponentCard({ name, projectId }: { name: string; projectId: 
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={`rounded-lg border border-neutral-200 overflow-hidden cursor-grab active:cursor-grabbing hover:border-neutral-300 transition-colors ${
+      className={`group/card relative rounded-lg border border-neutral-200 overflow-hidden cursor-grab active:cursor-grabbing hover:border-neutral-300 transition-colors ${
         isDragging ? 'opacity-50' : ''
       }`}
     >
+      {/* Delete button - floats in top-right corner */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          onDelete();
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        disabled={isDeleting}
+        className="absolute top-1 right-1 z-10 p-1.5 rounded bg-red-500 hover:bg-red-600 text-white opacity-0 group-hover/card:opacity-100 transition-opacity shadow-sm"
+        title="Delete component"
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
+
       {/* Preview container - centers the component */}
       <div
         className="bg-neutral-50 pointer-events-none flex items-center justify-center overflow-hidden"
@@ -462,7 +478,7 @@ function DraggableComponentCard({ name, projectId }: { name: string; projectId: 
 }
 
 function LibraryTab() {
-  const { availableComponents, setAvailableComponents } = useCanvasStore();
+  const { availableComponents, setAvailableComponents, removeAvailableComponent } = useCanvasStore();
   const { currentProject } = useProjectStore();
 
   const loadComponents = async () => {
@@ -474,6 +490,22 @@ function LibraryTab() {
       }
     } catch (err) {
       console.error('Failed to load components:', err);
+    }
+  };
+
+  const handleDeleteComponent = async (componentName: string) => {
+    if (!currentProject) return;
+    if (!window.confirm(`Delete "${componentName}"? This cannot be undone.`)) return;
+
+    try {
+      const result = await deleteProjectComponent(currentProject.id, componentName);
+      if (result.status === 'success') {
+        removeAvailableComponent(componentName);
+      } else {
+        console.error('Failed to delete component:', result.message);
+      }
+    } catch (err) {
+      console.error('Failed to delete component:', err);
     }
   };
 
@@ -512,6 +544,7 @@ function LibraryTab() {
             key={component.name}
             name={component.name}
             projectId={currentProject.id}
+            onDelete={() => handleDeleteComponent(component.name)}
           />
         ))}
 

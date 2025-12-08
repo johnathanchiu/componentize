@@ -90,7 +90,25 @@ You have access to the following pre-installed shadcn/ui components. Use them to
   import { Separator } from "@/components/ui/separator"
   import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
-Prefer these components over raw HTML when appropriate for a polished look.`;
+Prefer these components over raw HTML when appropriate for a polished look.
+
+SHARED STATE (Inter-Component Communication):
+Use useSharedState to share state between components on the canvas. This allows components to communicate with each other.
+
+Usage:
+  const [value, setValue] = useSharedState('keyName', defaultValue);
+
+Examples:
+  // Counter that can be controlled by multiple components
+  const [count, setCount] = useSharedState('counter', 0);
+
+  // Shared toggle state
+  const [isOpen, setIsOpen] = useSharedState('menuOpen', false);
+
+  // Read-only access (only destructure first element)
+  const [count] = useSharedState('counter', 0);
+
+When the user wants components to interact with each other (e.g., "button controls display", "toggle affects other component"), use useSharedState with a descriptive key name.`;
 
 export class ComponentAgent extends BaseAgent {
   private projectId: string | null = null;

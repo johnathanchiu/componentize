@@ -196,17 +196,17 @@ server.post<{ Body: GenerateInteractionRequest }>('/api/generate-interaction-str
  * Export page with all components as ZIP
  */
 server.post<{ Body: ExportPageRequest }>('/api/export-page', async (request, reply) => {
-  const { pageName, layout } = request.body;
+  const { pageName, layout, projectId } = request.body;
 
-  if (!pageName || !layout) {
+  if (!pageName || !layout || !projectId) {
     return reply.code(400).send({
       status: 'error',
-      message: 'Both pageName and layout are required',
+      message: 'pageName, layout, and projectId are required',
     });
   }
 
   try {
-    const zipStream = await exportService.exportPageAsZip(pageName, layout);
+    const zipStream = await exportService.exportPageAsZip(pageName, layout, projectId);
 
     reply.header('Content-Type', 'application/zip');
     reply.header('Content-Disposition', `attachment; filename="${pageName}.zip"`);
@@ -337,6 +337,23 @@ server.get<{ Params: { id: string; componentName: string } }>('/api/projects/:id
     reply.type('text/plain').send(result.content);
   } else {
     reply.code(404).send('Component not found');
+  }
+});
+
+/**
+ * Delete a component from a project
+ */
+server.delete<{ Params: { id: string; componentName: string } }>('/api/projects/:id/components/:componentName', async (request, reply) => {
+  const { id, componentName } = request.params;
+
+  try {
+    const result = await fileService.deleteProjectComponent(id, componentName);
+    return result;
+  } catch (error) {
+    return reply.code(500).send({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to delete component',
+    });
   }
 });
 

@@ -1,16 +1,24 @@
 import { create } from 'zustand';
 import type { Component, CanvasComponent, Interaction, StreamEvent, StreamStatus } from '../types/index';
 import { getProjectCanvas, saveProjectCanvas } from '../lib/api';
+import type { StateConnection } from '../lib/sharedStore';
 
-// Debounce helper for saving canvas
-let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+// Per-project debounce for saving canvas (avoids cross-project collisions)
+const saveTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
 const debouncedSave = (projectId: string, components: CanvasComponent[]) => {
-  if (saveTimeout) clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => {
+  // Clear existing timeout for this specific project
+  const existingTimeout = saveTimeouts.get(projectId);
+  if (existingTimeout) clearTimeout(existingTimeout);
+
+  const timeoutId = setTimeout(() => {
     saveProjectCanvas(projectId, components).catch((e) => {
-      console.error('Failed to save canvas:', e);
+      console.error(`Failed to save canvas for project ${projectId}:`, e);
     });
+    saveTimeouts.delete(projectId);
   }, 500);
+
+  saveTimeouts.set(projectId, timeoutId);
 };
 
 interface ErrorContext {
@@ -27,9 +35,12 @@ interface CanvasStore {
   availableComponents: Component[];
   setAvailableComponents: (components: Component[]) => void;
   addAvailableComponent: (component: Component) => void;
+  removeAvailableComponent: (componentName: string) => void;
 
   // Canvas items
   canvasComponents: CanvasComponent[];
+  isLoadingCanvas: boolean;
+  canvasLoadError: string | null;
   addToCanvas: (component: CanvasComponent) => void;
   updatePosition: (id: string, x: number, y: number) => void;
   updateSize: (id: string, width: number, height: number, x?: number, y?: number) => void;
@@ -68,6 +79,15 @@ interface CanvasStore {
   addInteraction: (componentId: string, interaction: Interaction) => void;
   removeInteraction: (componentId: string, interactionId: string) => void;
   updateInteraction: (componentId: string, interactionId: string, updates: Partial<Interaction>) => void;
+
+  // State connections (for visual connection lines)
+  stateConnections: StateConnection[];
+  showConnections: boolean;
+  setStateConnections: (connections: StateConnection[]) => void;
+  addStateConnections: (connections: StateConnection[]) => void;
+  removeComponentConnections: (componentId: string) => void;
+  setShowConnections: (show: boolean) => void;
+  toggleShowConnections: () => void;
 }
 
 export const useCanvasStore = create<CanvasStore>((set) => ({
@@ -82,18 +102,37 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
     set((state) => ({
       availableComponents: [...state.availableComponents, component],
     })),
+  removeAvailableComponent: (componentName) =>
+    set((state) => ({
+      availableComponents: state.availableComponents.filter((c) => c.name !== componentName),
+    })),
 
   // Canvas items
   canvasComponents: [],
+  isLoadingCanvas: false,
+  canvasLoadError: null,
   loadCanvas: async (projectId) => {
+    set({ isLoadingCanvas: true, canvasLoadError: null });
     try {
       const result = await getProjectCanvas(projectId);
       if (result.status === 'success') {
-        set({ canvasComponents: result.components, currentProjectId: projectId });
+        set({
+          canvasComponents: result.components,
+          currentProjectId: projectId,
+          isLoadingCanvas: false,
+        });
+      } else {
+        throw new Error('Failed to load canvas');
       }
     } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error loading canvas';
       console.error('Failed to load canvas:', e);
-      set({ canvasComponents: [], currentProjectId: projectId });
+      set({
+        canvasLoadError: errorMessage,
+        canvasComponents: [],
+        currentProjectId: projectId,
+        isLoadingCanvas: false,
+      });
     }
   },
   addToCanvas: (component) =>
@@ -134,11 +173,32 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
     }),
   removeFromCanvas: (id) =>
     set((state) => {
+      const removedComponent = state.canvasComponents.find((comp) => comp.id === id);
       const newComponents = state.canvasComponents.filter((comp) => comp.id !== id);
+
+      // Clean up componentVersions if no other instances of this component on canvas
+      let newVersions = state.componentVersions;
+      if (removedComponent) {
+        const componentStillExists = newComponents.some(
+          (c) => c.componentName === removedComponent.componentName
+        );
+        if (!componentStillExists) {
+          const { [removedComponent.componentName]: _, ...rest } = state.componentVersions;
+          newVersions = rest;
+        }
+      }
+
+      // Clean up state connections for this component
+      const newConnections = state.stateConnections.filter((c) => c.componentId !== id);
+
       if (state.currentProjectId) {
         debouncedSave(state.currentProjectId, newComponents);
       }
-      return { canvasComponents: newComponents };
+      return {
+        canvasComponents: newComponents,
+        componentVersions: newVersions,
+        stateConnections: newConnections,
+      };
     }),
   clearCanvas: () => set({ canvasComponents: [] }),
 
@@ -227,4 +287,22 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
           : comp
       ),
     })),
+
+  // State connections
+  stateConnections: [],
+  showConnections: false,
+  setStateConnections: (connections) => set({ stateConnections: connections }),
+  addStateConnections: (connections) =>
+    set((state) => {
+      // Remove existing connections for these component IDs, then add new ones
+      const componentIds = new Set(connections.map((c) => c.componentId));
+      const filtered = state.stateConnections.filter((c) => !componentIds.has(c.componentId));
+      return { stateConnections: [...filtered, ...connections] };
+    }),
+  removeComponentConnections: (componentId) =>
+    set((state) => ({
+      stateConnections: state.stateConnections.filter((c) => c.componentId !== componentId),
+    })),
+  setShowConnections: (show) => set({ showConnections: show }),
+  toggleShowConnections: () => set((state) => ({ showConnections: !state.showConnections })),
 }));

@@ -1,5 +1,6 @@
 import { transform } from 'sucrase';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useSharedState } from './sharedStore';
 
 // Import all shadcn components
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,9 @@ const COMPONENT_SCOPE: Record<string, unknown> = {
   useRef,
   useCallback,
   useMemo,
+
+  // Shared state (inter-component communication)
+  useSharedState,
 
   // shadcn/ui components
   Button,

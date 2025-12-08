@@ -23,11 +23,12 @@ export class ExportService {
     const componentInstances = components.map((comp, index) => {
       const { componentName, position, size, interactions } = comp;
 
-      const style = [
-        `left: ${position.x}px`,
-        `top: ${position.y}px`,
-        size ? `width: ${size.width}px` : null,
-        size ? `height: ${size.height}px` : null
+      // React inline styles expect numbers for pixel values (no 'px' suffix)
+      const styleParts = [
+        `left: ${position.x}`,
+        `top: ${position.y}`,
+        size ? `width: ${size.width}` : null,
+        size ? `height: ${size.height}` : null
       ].filter(Boolean).join(', ');
 
       // Generate event handlers if interactions exist
@@ -35,7 +36,7 @@ export class ExportService {
         ? interactions.map(i => `${i.type}={${i.handlerName}}`).join(' ')
         : '';
 
-      return `        <div key="${index}" className="absolute" style={{ ${style} }}>
+      return `        <div key="${index}" className="absolute" style={{ ${styleParts} }}>
           <${componentName}${handlers ? ` ${handlers}` : ''} />
         </div>`;
     }).join('\n');
@@ -170,16 +171,17 @@ export default {
   /**
    * Export page with all dependencies as ZIP
    */
-  async exportPageAsZip(pageName: string, layout: PageLayout): Promise<Readable> {
+  async exportPageAsZip(pageName: string, layout: PageLayout, projectId: string): Promise<Readable> {
     // Generate page code
     const pageCode = this.generatePageCode(pageName, layout);
 
-    // Get all component files
+    // Get all component files from the project
     const componentNames = [...new Set(layout.components.map(c => c.componentName))];
     const componentFiles: ExportFile[] = [];
 
     for (const name of componentNames) {
-      const result = await fileService.readComponent(name);
+      // Use project-scoped component reading
+      const result = await fileService.readProjectComponent(projectId, name);
       if (result.status === 'success' && result.content) {
         componentFiles.push({
           path: `components/${name}.tsx`,
@@ -222,10 +224,10 @@ export default {
 </html>`;
     archive.append(indexHtml, { name: 'index.html' });
 
-    // Add main.tsx entry point
+    // Add main.tsx entry point (pages folder is at root, not in src)
     const mainTsx = `import React from 'react'
 import ReactDOM from 'react-dom/client'
-import ${pageName} from './pages/${pageName}'
+import ${pageName} from '../pages/${pageName}'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

@@ -65,6 +65,7 @@ export interface GenerateInteractionRequest {
 export interface ExportPageRequest {
   pageName: string;
   layout: PageLayout;
+  projectId: string;
 }
 
 // API Response Types
