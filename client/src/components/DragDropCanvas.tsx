@@ -5,10 +5,12 @@ import { useProjectStore } from '../store/projectStore';
 import { CSS } from '@dnd-kit/utilities';
 import { useDraggable } from '@dnd-kit/core';
 import { InteractionPanel } from './InteractionPanel';
+import { ConnectionsOverlay, ConnectionsLegend, ConnectionsToggle } from './ConnectionsOverlay';
 import { Resizable } from 're-resizable';
-import type { Size } from '../types/index';
-import { useEffect, useState, useRef, type ComponentType } from 'react';
+import type { Size, Interaction } from '../types/index';
+import { useEffect, useState, useRef, useCallback, useMemo, type ComponentType } from 'react';
 import { loadComponent } from '../lib/componentRenderer';
+import { detectStateConnections } from '../lib/sharedStore';
 
 interface CanvasItemProps {
   id: string;
@@ -23,10 +25,11 @@ interface CanvasItemProps {
   onDelete: () => void;
   onResize: (width: number, height: number) => void;
   onFix: (errorMessage: string, errorStack?: string) => void;
-  interactions?: any[];
+  onConnectionsDetected: (source: string) => void;
+  interactions?: Interaction[];
 }
 
-function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSelect, onEdit, onDelete, onResize, onFix, interactions }: CanvasItemProps) {
+function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSelect, onEdit, onDelete, onResize, onFix, onConnectionsDetected, interactions }: CanvasItemProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `canvas-${id}`,
     data: { id, componentName, source: 'canvas' },
@@ -45,41 +48,110 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
   // Track if this component is currently being fixed
   const isBeingFixed = generationMode === 'fix' && editingComponentName === componentName && isGenerating;
 
+  // Compute dynamic control positioning based on component location
+  // Controls flip below when near top, and move to opposite side when near edges
+  const controlPosition = useMemo(() => {
+    const TOOLBAR_HEIGHT = 36; // Height of the toolbar + gap
+    const EDGE_THRESHOLD = 50; // Distance from edge to trigger flip
+
+    // Check if near top edge
+    const nearTop = y < TOOLBAR_HEIGHT + EDGE_THRESHOLD;
+
+    // Check if near left edge (controls would go off-screen to the left)
+    const nearLeft = x < EDGE_THRESHOLD;
+
+    // For components at far right, we need to check if they're near the right edge
+    // of the canvas scroll area. Use a reasonable canvas width estimate.
+    // Controls will be placed to the LEFT of the component when near right edge.
+    const componentWidth = size?.width || 120;
+    const canvasWidth = typeof window !== 'undefined' ? window.innerWidth - 350 : 1000; // Approximate canvas width
+    const nearRight = x + componentWidth > canvasWidth - EDGE_THRESHOLD;
+
+    return {
+      vertical: nearTop ? 'bottom' : 'top',
+      // Place controls on opposite side when near an edge
+      horizontal: nearRight ? 'outsideLeft' : nearLeft ? 'outsideRight' : 'left',
+    };
+  }, [x, y, size?.width]);
+
+  // Store callback in ref to avoid re-triggering effect
+  const connectionsCallbackRef = useRef(onConnectionsDetected);
+  connectionsCallbackRef.current = onConnectionsDetected;
+
+  // Track last observed size to avoid redundant updates
+  const lastSizeRef = useRef<Size | null>(null);
+
   // Load component when projectId, componentName, or version changes
   useEffect(() => {
+    const abortController = new AbortController();
     setLoading(true);
     setComponentError(null);
 
-    loadComponent(projectId, componentName)
+    // Fetch source and compile component
+    fetch(`/api/projects/${projectId}/components/${componentName}`, {
+      signal: abortController.signal,
+    })
+      .then((res) => res.text())
+      .then((source) => {
+        // Check if aborted
+        if (abortController.signal.aborted) return;
+
+        // Detect state connections from source (use ref to avoid dependency)
+        connectionsCallbackRef.current(source);
+
+        // Compile and set component
+        return loadComponent(projectId, componentName);
+      })
       .then((comp) => {
+        if (abortController.signal.aborted || !comp) return;
         setComponent(() => comp);
         setLoading(false);
       })
       .catch((err) => {
+        // Ignore abort errors
+        if (err.name === 'AbortError') return;
         console.error('Failed to load component:', err);
         setComponentError({ message: err.message, stack: err.stack });
         setLoading(false);
       });
+
+    return () => abortController.abort();
   }, [projectId, componentName, componentVersion]);
 
   // Measure natural size using ResizeObserver on the actual component
-  // naturalSize is used for aspect ratio calculation, not for setting box size
+  // Debounced to avoid rapid re-renders
   useEffect(() => {
     if (!Component || !componentRef.current) return;
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0) {
           const newSize = { width: Math.round(width), height: Math.round(height) };
-          // Always update naturalSize for scaling calculations
-          setNaturalSize(newSize);
+
+          // Skip if size hasn't actually changed
+          const lastSize = lastSizeRef.current;
+          if (lastSize && lastSize.width === newSize.width && lastSize.height === newSize.height) {
+            return;
+          }
+
+          // Debounce the update
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            lastSizeRef.current = newSize;
+            setNaturalSize(newSize);
+          }, 50);
         }
       }
     });
 
     observer.observe(componentRef.current);
-    return () => observer.disconnect();
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      observer.disconnect();
+    };
   }, [Component]);
 
   // Set initial box size only when there's no stored size
@@ -95,7 +167,10 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
   };
 
   // Use stored size (user resized), or natural size, or fallback
-  const displaySize = size || naturalSize || { width: 120, height: 40 };
+  const displaySize = useMemo(
+    () => size || naturalSize || { width: 120, height: 40 },
+    [size, naturalSize]
+  );
 
   // Calculate scale factor for when user has resized the component
   const scale = size && naturalSize && naturalSize.width > 0
@@ -111,6 +186,7 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
 
   return (
     <div
+      id={`connection-anchor-${id}`}
       ref={setNodeRef}
       style={style}
       className={`group ${isDragging ? 'opacity-50 z-50' : ''}`}
@@ -119,8 +195,18 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
         onSelect();
       }}
     >
-      {/* Floating action buttons - appear on hover, positioned at left to avoid off-screen issues */}
-      <div className="absolute -top-8 left-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-30 flex gap-1 items-center">
+      {/* Floating action buttons - appear on hover, position adapts to edges */}
+      <div
+        className={`absolute opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-30 flex gap-1 items-center ${
+          controlPosition.vertical === 'bottom' ? 'top-full mt-1' : '-top-8'
+        } ${
+          controlPosition.horizontal === 'outsideLeft'
+            ? 'right-full mr-1'
+            : controlPosition.horizontal === 'outsideRight'
+            ? 'left-full ml-1'
+            : 'left-0'
+        }`}
+      >
         {/* Drag handle */}
         <div
           {...listeners}
@@ -243,9 +329,19 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
         )}
       </Resizable>
 
-      {/* Interaction count badge */}
+      {/* Interaction count badge - moves to avoid overlap with controls */}
       {interactions && interactions.length > 0 && (
-        <div className="absolute -bottom-5 left-0 px-1.5 py-0.5 bg-neutral-600 text-white text-[9px] rounded shadow-sm pointer-events-none z-20">
+        <div
+          className={`absolute px-1.5 py-0.5 bg-neutral-600 text-white text-[9px] rounded shadow-sm pointer-events-none z-20 ${
+            controlPosition.vertical === 'bottom' ? '-top-5' : '-bottom-5'
+          } ${
+            controlPosition.horizontal === 'outsideLeft'
+              ? 'right-0'
+              : controlPosition.horizontal === 'outsideRight'
+              ? 'left-0'
+              : 'left-0'
+          }`}
+        >
           {interactions.length} interaction{interactions.length !== 1 ? 's' : ''}
         </div>
       )}
@@ -276,6 +372,10 @@ export function DragDropCanvas() {
     updateSize,
     startFixing,
     startEditing,
+    stateConnections,
+    showConnections,
+    addStateConnections,
+    removeComponentConnections,
   } = useCanvasStore();
 
   // Handler to start fixing a component with an error - auto-triggers fix
@@ -287,6 +387,23 @@ export function DragDropCanvas() {
   const handleEdit = (componentName: string) => {
     startEditing(componentName);
   };
+
+  // Create stable callback for detecting connections from a component's source
+  // Memoized to avoid creating new function references on every render
+  const createConnectionsCallback = useCallback(
+    (componentId: string, componentName: string) => {
+      return (source: string) => {
+        const connections = detectStateConnections(source, componentId, componentName);
+        if (connections.length > 0) {
+          addStateConnections(connections);
+        } else {
+          // Remove any existing connections for this component if it no longer has any
+          removeComponentConnections(componentId);
+        }
+      };
+    },
+    [addStateConnections, removeComponentConnections]
+  );
 
   return (
     <div className="h-full overflow-hidden">
@@ -324,10 +441,20 @@ export function DragDropCanvas() {
               onDelete={() => removeFromCanvas(item.id)}
               onResize={(width, height) => updateSize(item.id, width, height)}
               onFix={(errorMessage, errorStack) => handleFix(item.componentName, errorMessage, errorStack)}
+              onConnectionsDetected={createConnectionsCallback(item.id, item.componentName)}
               interactions={item.interactions}
             />
           ))
         ) : null}
+
+        {/* Visual connections between components sharing state */}
+        <ConnectionsOverlay connections={stateConnections} visible={showConnections} />
+        <ConnectionsLegend />
+      </div>
+
+      {/* Toggle button for connections (top-right corner) */}
+      <div className="absolute top-3 right-3 z-50">
+        <ConnectionsToggle />
       </div>
     </div>
   );

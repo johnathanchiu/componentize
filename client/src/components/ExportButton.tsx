@@ -2,14 +2,22 @@ import { useState } from 'react';
 import { Download, Check } from 'lucide-react';
 import { exportPageAsZip } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
+import { useProjectStore } from '../store/projectStore';
 
 export function ExportButton() {
   const { canvasComponents } = useCanvasStore();
+  const { currentProject } = useProjectStore();
   const [isExporting, setIsExporting] = useState(false);
   const [exported, setExported] = useState(false);
   const [error, setError] = useState('');
 
   const handleExport = async () => {
+    if (!currentProject) {
+      setError('No project selected');
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
+
     if (canvasComponents.length === 0) {
       setError('Add some components to the canvas first!');
       setTimeout(() => setError(''), 3000);
@@ -22,15 +30,16 @@ export function ExportButton() {
 
     try {
       // Export page as ZIP with all components and dependencies
-      const blob = await exportPageAsZip('MyPage', {
+      const pageName = currentProject.name.replace(/\s+/g, '');
+      const blob = await exportPageAsZip(pageName, {
         components: canvasComponents,
-      });
+      }, currentProject.id);
 
       // Download the ZIP file
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'MyPage.zip';
+      a.download = `${pageName}.zip`;
       a.click();
       URL.revokeObjectURL(url);
 

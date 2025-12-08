@@ -55,14 +55,15 @@ export async function listComponents(): Promise<ListComponentsResponse> {
  */
 export async function exportPageAsZip(
   pageName: string,
-  layout: PageLayout
+  layout: PageLayout,
+  projectId: string
 ): Promise<Blob> {
   const response = await fetch(`${API_BASE_URL}/export-page`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ pageName, layout }),
+    body: JSON.stringify({ pageName, layout, projectId }),
   });
 
   if (!response.ok) {
@@ -210,6 +211,16 @@ export async function deleteProject(id: string): Promise<{ status: string; messa
  */
 export async function listProjectComponents(projectId: string): Promise<ListComponentsResponse> {
   const response = await fetch(`${API_BASE_URL}/projects/${projectId}/components`);
+  return response.json();
+}
+
+/**
+ * Delete a component from a project
+ */
+export async function deleteProjectComponent(projectId: string, componentName: string): Promise<APIResponse> {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/components/${componentName}`, {
+    method: 'DELETE',
+  });
   return response.json();
 }
 
