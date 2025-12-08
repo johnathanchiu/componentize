@@ -7,10 +7,8 @@ import { useDraggable } from '@dnd-kit/core';
 import { InteractionPanel } from './InteractionPanel';
 import { Resizable } from 're-resizable';
 import type { Size } from '../types/index';
-import { useEffect, useState, useRef } from 'react';
-
-// Vite dev server port (always 5100 for shared workspace)
-const VITE_SERVER_PORT = 5100;
+import { useEffect, useState, useRef, type ComponentType } from 'react';
+import { loadComponent } from '../lib/componentRenderer';
 
 interface CanvasItemProps {
   id: string;
@@ -34,49 +32,62 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
     data: { id, componentName, source: 'canvas' },
   });
 
+  const [Component, setComponent] = useState<ComponentType | null>(null);
   const [componentError, setComponentError] = useState<{ message: string; stack?: string } | null>(null);
   const [naturalSize, setNaturalSize] = useState<Size | null>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [loading, setLoading] = useState(true);
+  const componentRef = useRef<HTMLDivElement>(null);
   const { isGenerating, generationMode, editingComponentName, componentVersions } = useCanvasStore();
 
-  // Get version for this component (used to bust iframe cache)
+  // Get version for this component (used to reload on changes)
   const componentVersion = componentVersions[componentName] || 0;
-
-  // Preview URL uses Vite dev server with project and component params
-  const previewUrl = `http://localhost:${VITE_SERVER_PORT}/?project=${projectId}&component=${componentName}&v=${componentVersion}`;
 
   // Track if this component is currently being fixed
   const isBeingFixed = generationMode === 'fix' && editingComponentName === componentName && isGenerating;
 
-  // Listen for messages from iframe (errors, loads, and size reports)
+  // Load component when projectId, componentName, or version changes
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.componentName !== componentName) return;
+    setLoading(true);
+    setComponentError(null);
 
-      if (event.data.type === 'COMPONENT_ERROR') {
-        setComponentError(event.data.error);
-      } else if (event.data.type === 'COMPONENT_LOADED') {
-        setComponentError(null);
-      } else if (event.data.type === 'COMPONENT_SIZE') {
-        // Capture the component's natural size
-        const { width, height } = event.data.size;
-        setNaturalSize({ width, height });
-        // Also update the store if no size was set yet (initial placement)
-        if (!size) {
-          onResize(width, height);
+    loadComponent(projectId, componentName)
+      .then((comp) => {
+        setComponent(() => comp);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to load component:', err);
+        setComponentError({ message: err.message, stack: err.stack });
+        setLoading(false);
+      });
+  }, [projectId, componentName, componentVersion]);
+
+  // Measure natural size using ResizeObserver on the actual component
+  // naturalSize is used for aspect ratio calculation, not for setting box size
+  useEffect(() => {
+    if (!Component || !componentRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          const newSize = { width: Math.round(width), height: Math.round(height) };
+          // Always update naturalSize for scaling calculations
+          setNaturalSize(newSize);
         }
       }
-    };
+    });
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [componentName, size, onResize]);
+    observer.observe(componentRef.current);
+    return () => observer.disconnect();
+  }, [Component]);
 
-  // Clear error and reset natural size when component version changes
+  // Set initial box size only when there's no stored size
   useEffect(() => {
-    setComponentError(null);
-    setNaturalSize(null);
-  }, [componentVersion]);
+    if (naturalSize && !size) {
+      onResize(naturalSize.width, naturalSize.height);
+    }
+  }, [naturalSize, size, onResize]);
 
   const handleFixErrors = () => {
     if (!componentError) return;
@@ -87,7 +98,6 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
   const displaySize = size || naturalSize || { width: 120, height: 40 };
 
   // Calculate scale factor for when user has resized the component
-  // We use uniform scaling based on width to maintain aspect ratio
   const scale = size && naturalSize && naturalSize.width > 0
     ? size.width / naturalSize.width
     : 1;
@@ -109,8 +119,8 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
         onSelect();
       }}
     >
-      {/* Floating action buttons - appear on hover */}
-      <div className="absolute -top-8 right-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-30 flex gap-1 items-center">
+      {/* Floating action buttons - appear on hover, positioned at left to avoid off-screen issues */}
+      <div className="absolute -top-8 left-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-30 flex gap-1 items-center">
         {/* Drag handle */}
         <div
           {...listeners}
@@ -157,6 +167,7 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
         }}
         minWidth={40}
         minHeight={24}
+        lockAspectRatio={naturalSize ? naturalSize.width / naturalSize.height : true}
         className={`relative rounded transition-shadow duration-150 ${
           isSelected
             ? 'ring-2 ring-blue-500 ring-offset-1'
@@ -190,22 +201,23 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
           topLeft: false,
         }}
       >
-        {/* Iframe wrapper - clips overflow when scaling */}
-        <div className="w-full h-full overflow-hidden">
-          {/* Iframe renders at natural size, scaled to fit container */}
-          <iframe
-            ref={iframeRef}
-            src={previewUrl}
-            className="border-none bg-transparent"
-            style={{
-              width: naturalSize?.width || '100%',
-              height: naturalSize?.height || '100%',
-              transformOrigin: 'top left',
-              transform: scale !== 1 ? `scale(${scale})` : undefined,
-            }}
-            sandbox="allow-scripts"
-            title={`Preview of ${componentName}`}
-          />
+        {/* Direct component rendering - no iframe! */}
+        <div className="w-full h-full flex items-center justify-center overflow-hidden">
+          {loading && (
+            <div className="text-xs text-neutral-400">Loading...</div>
+          )}
+          {!loading && Component && (
+            <div
+              ref={componentRef}
+              className="inline-block"
+              style={{
+                transformOrigin: 'center',
+                transform: scale !== 1 ? `scale(${scale})` : undefined,
+              }}
+            >
+              <Component />
+            </div>
+          )}
         </div>
 
         {/* Error overlay */}

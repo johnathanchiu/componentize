@@ -327,6 +327,20 @@ server.get<{ Params: { id: string; componentName: string } }>('/api/projects/:id
 });
 
 /**
+ * Get raw component source (plain text for direct rendering)
+ */
+server.get<{ Params: { id: string; componentName: string } }>('/api/projects/:id/components/:componentName', async (request, reply) => {
+  const { id, componentName } = request.params;
+  const result = await fileService.readProjectComponent(id, componentName);
+
+  if (result.status === 'success' && result.content) {
+    reply.type('text/plain').send(result.content);
+  } else {
+    reply.code(404).send('Component not found');
+  }
+});
+
+/**
  * Generate a component in a project with streaming
  */
 server.post<{

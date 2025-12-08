@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ComponentType } from 'react';
 import { Wand2, Loader2, X, Pencil, Wrench, RefreshCw, Trash2 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { generateProjectComponentStream, editProjectComponentStream, listProjectComponents } from '../lib/api';
@@ -8,10 +8,8 @@ import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ResizeHandle } from './ResizeHandle';
 import { StatusOrb } from './StatusOrb';
 import { Timeline } from './Timeline';
+import { loadComponent } from '../lib/componentRenderer';
 import type { Size } from '../types/index';
-
-// Vite dev server port (always 5100 for shared workspace)
-const VITE_SERVER_PORT = 5100;
 
 // ============================================
 // CreateTab - Component generation/editing
@@ -378,38 +376,51 @@ function DraggableComponentCard({ name, projectId }: { name: string; projectId: 
   });
   const { componentVersions } = useCanvasStore();
   const componentVersion = componentVersions[name] || 0;
-  const [previewSize, setPreviewSize] = useState<Size | null>(null);
+  const [Component, setComponent] = useState<ComponentType | null>(null);
+  const [naturalSize, setNaturalSize] = useState<Size | null>(null);
+  const [loading, setLoading] = useState(true);
+  const componentRef = useRef<HTMLDivElement>(null);
 
-  // Preview URL uses Vite dev server with project and component params
-  const previewUrl = `http://localhost:${VITE_SERVER_PORT}/?project=${projectId}&component=${name}&v=${componentVersion}`;
-
-  // Listen for COMPONENT_SIZE messages to auto-size the preview
+  // Load component when projectId, name, or version changes
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.componentName === name && event.data.type === 'COMPONENT_SIZE') {
-        setPreviewSize(event.data.size);
+    setLoading(true);
+    setNaturalSize(null); // Reset size when reloading
+    loadComponent(projectId, name)
+      .then((comp) => {
+        setComponent(() => comp);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to load component for preview:', err);
+        setLoading(false);
+      });
+  }, [projectId, name, componentVersion]);
+
+  // Measure component's natural size using ResizeObserver
+  useEffect(() => {
+    if (!Component || !componentRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setNaturalSize({ width: Math.round(width), height: Math.round(height) });
+        }
       }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [name]);
+    });
 
-  // Reset size when component version changes
-  useEffect(() => {
-    setPreviewSize(null);
-  }, [componentVersion]);
+    observer.observe(componentRef.current);
+    return () => observer.disconnect();
+  }, [Component]);
 
-  // Calculate scaled preview that fits within max bounds
-  const maxWidth = 240; // panel width minus padding
-  const maxHeight = 120; // reasonable max
-  const scale = previewSize ? Math.min(
-    maxWidth / previewSize.width,
-    maxHeight / previewSize.height,
+  // Calculate scale to fit within max bounds
+  const maxWidth = 220; // panel width minus padding
+  const maxHeight = 100; // reasonable max
+  const scale = naturalSize ? Math.min(
+    maxWidth / naturalSize.width,
+    maxHeight / naturalSize.height,
     1 // don't scale up
   ) : 1;
-
-  // Display height is scaled natural size, or fallback
-  const displayHeight = previewSize ? Math.ceil(previewSize.height * scale) : 80;
 
   return (
     <div
@@ -420,26 +431,26 @@ function DraggableComponentCard({ name, projectId }: { name: string; projectId: 
         isDragging ? 'opacity-50' : ''
       }`}
     >
-      {/* Preview iframe - auto-sized based on component content */}
+      {/* Preview container - centers the component */}
       <div
-        className="overflow-hidden bg-neutral-50 pointer-events-none flex items-center justify-center"
-        style={{
-          height: displayHeight,
-          minHeight: 40,
-        }}
+        className="bg-neutral-50 pointer-events-none flex items-center justify-center overflow-hidden"
+        style={{ minHeight: 50, padding: 8 }}
       >
-        <iframe
-          src={previewUrl}
-          className="border-none"
-          style={{
-            width: previewSize?.width || '100%',
-            height: previewSize?.height || '100%',
-            transformOrigin: 'top left',
-            transform: scale !== 1 ? `scale(${scale})` : undefined,
-          }}
-          sandbox="allow-scripts"
-          title={`Preview of ${name}`}
-        />
+        {loading && (
+          <div className="text-xs text-neutral-400">Loading...</div>
+        )}
+        {!loading && Component && (
+          <div
+            ref={componentRef}
+            className="inline-block"
+            style={{
+              transformOrigin: 'center',
+              transform: scale !== 1 ? `scale(${scale})` : undefined,
+            }}
+          >
+            <Component />
+          </div>
+        )}
       </div>
 
       {/* Component name label */}
