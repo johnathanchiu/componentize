@@ -1,2 +1,8 @@
 node_modules
 .env
+dist
+
+# Workspace and generated content
+server/.workspace
+server/.components
+server/.pages

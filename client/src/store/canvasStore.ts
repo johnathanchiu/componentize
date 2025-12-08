@@ -1,5 +1,17 @@
 import { create } from 'zustand';
 import type { Component, CanvasComponent, Interaction, StreamEvent, StreamStatus } from '../types/index';
+import { getProjectCanvas, saveProjectCanvas } from '../lib/api';
+
+// Debounce helper for saving canvas
+let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+const debouncedSave = (projectId: string, components: CanvasComponent[]) => {
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    saveProjectCanvas(projectId, components).catch((e) => {
+      console.error('Failed to save canvas:', e);
+    });
+  }, 500);
+};
 
 interface ErrorContext {
   message: string;
@@ -7,6 +19,10 @@ interface ErrorContext {
 }
 
 interface CanvasStore {
+  // Current project ID (for persistence)
+  currentProjectId: string | null;
+  setCurrentProjectId: (id: string | null) => void;
+
   // Component library
   availableComponents: Component[];
   setAvailableComponents: (components: Component[]) => void;
@@ -19,6 +35,7 @@ interface CanvasStore {
   updateSize: (id: string, width: number, height: number, x?: number, y?: number) => void;
   removeFromCanvas: (id: string) => void;
   clearCanvas: () => void;
+  loadCanvas: (projectId: string) => Promise<void>;
 
   // UI state
   isGenerating: boolean;
@@ -54,6 +71,10 @@ interface CanvasStore {
 }
 
 export const useCanvasStore = create<CanvasStore>((set) => ({
+  // Current project ID (for persistence)
+  currentProjectId: null,
+  setCurrentProjectId: (id) => set({ currentProjectId: id }),
+
   // Component library
   availableComponents: [],
   setAvailableComponents: (components) => set({ availableComponents: components }),
@@ -64,19 +85,38 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
 
   // Canvas items
   canvasComponents: [],
+  loadCanvas: async (projectId) => {
+    try {
+      const result = await getProjectCanvas(projectId);
+      if (result.status === 'success') {
+        set({ canvasComponents: result.components, currentProjectId: projectId });
+      }
+    } catch (e) {
+      console.error('Failed to load canvas:', e);
+      set({ canvasComponents: [], currentProjectId: projectId });
+    }
+  },
   addToCanvas: (component) =>
-    set((state) => ({
-      canvasComponents: [...state.canvasComponents, component],
-    })),
+    set((state) => {
+      const newComponents = [...state.canvasComponents, component];
+      if (state.currentProjectId) {
+        debouncedSave(state.currentProjectId, newComponents);
+      }
+      return { canvasComponents: newComponents };
+    }),
   updatePosition: (id, x, y) =>
-    set((state) => ({
-      canvasComponents: state.canvasComponents.map((comp) =>
+    set((state) => {
+      const newComponents = state.canvasComponents.map((comp) =>
         comp.id === id ? { ...comp, position: { x, y } } : comp
-      ),
-    })),
+      );
+      if (state.currentProjectId) {
+        debouncedSave(state.currentProjectId, newComponents);
+      }
+      return { canvasComponents: newComponents };
+    }),
   updateSize: (id, width, height, x, y) =>
-    set((state) => ({
-      canvasComponents: state.canvasComponents.map((comp) => {
+    set((state) => {
+      const newComponents = state.canvasComponents.map((comp) => {
         if (comp.id === id) {
           const updates: Partial<CanvasComponent> = { size: { width, height } };
           // Update position if provided
@@ -86,12 +126,20 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
           return { ...comp, ...updates };
         }
         return comp;
-      }),
-    })),
+      });
+      if (state.currentProjectId) {
+        debouncedSave(state.currentProjectId, newComponents);
+      }
+      return { canvasComponents: newComponents };
+    }),
   removeFromCanvas: (id) =>
-    set((state) => ({
-      canvasComponents: state.canvasComponents.filter((comp) => comp.id !== id),
-    })),
+    set((state) => {
+      const newComponents = state.canvasComponents.filter((comp) => comp.id !== id);
+      if (state.currentProjectId) {
+        debouncedSave(state.currentProjectId, newComponents);
+      }
+      return { canvasComponents: newComponents };
+    }),
   clearCanvas: () => set({ canvasComponents: [] }),
 
   // UI state

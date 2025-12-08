@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ComponentType } from 'react';
 import { Wand2, Loader2, X, Pencil, Wrench, RefreshCw, Trash2 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
-import { generateComponentStream, editComponentStream, listComponents } from '../lib/api';
+import { generateProjectComponentStream, editProjectComponentStream, listProjectComponents } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
+import { useProjectStore } from '../store/projectStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ResizeHandle } from './ResizeHandle';
 import { StatusOrb } from './StatusOrb';
 import { Timeline } from './Timeline';
-import { config } from '../config';
+import { loadComponent } from '../lib/componentRenderer';
+import type { Size } from '../types/index';
 
 // ============================================
 // CreateTab - Component generation/editing
@@ -19,6 +21,7 @@ function CreateTab() {
   const [error, setError] = useState('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  const { currentProject } = useProjectStore();
   const {
     isGenerating,
     setIsGenerating,
@@ -129,7 +132,12 @@ The error "${errorMessage}" typically means a variable is used but not defined. 
 Call read_component to see the code, find the bug, and call update_component with fixed code.`;
 
     try {
-      const stream = editComponentStream(targetName, fixPrompt);
+      if (!currentProject) {
+        setError('No project selected');
+        setStreamStatus('error');
+        return;
+      }
+      const stream = editProjectComponentStream(currentProject.id, targetName, fixPrompt);
       await handleStreamResponse(stream, targetName, false);
     } catch (err) {
       setError('Network error. Make sure the backend server is running.');
@@ -174,9 +182,14 @@ Call read_component to see the code, find the bug, and call update_component wit
     setStreamStatus('thinking');
 
     try {
+      if (!currentProject) {
+        setError('No project selected');
+        setStreamStatus('error');
+        return;
+      }
       const stream = generationMode === 'create'
-        ? generateComponentStream(prompt, targetName)
-        : editComponentStream(targetName, prompt);
+        ? generateProjectComponentStream(currentProject.id, prompt, targetName)
+        : editProjectComponentStream(currentProject.id, targetName, prompt);
 
       await handleStreamResponse(stream, targetName, generationMode === 'create');
     } catch (err) {
@@ -356,13 +369,58 @@ Call read_component to see the code, find the bug, and call update_component wit
 // LibraryTab - Component library with previews
 // ============================================
 
-function DraggableComponentCard({ name }: { name: string }) {
+function DraggableComponentCard({ name, projectId }: { name: string; projectId: string }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `library-${name}`,
     data: { componentName: name, source: 'library' },
   });
   const { componentVersions } = useCanvasStore();
   const componentVersion = componentVersions[name] || 0;
+  const [Component, setComponent] = useState<ComponentType | null>(null);
+  const [naturalSize, setNaturalSize] = useState<Size | null>(null);
+  const [loading, setLoading] = useState(true);
+  const componentRef = useRef<HTMLDivElement>(null);
+
+  // Load component when projectId, name, or version changes
+  useEffect(() => {
+    setLoading(true);
+    setNaturalSize(null); // Reset size when reloading
+    loadComponent(projectId, name)
+      .then((comp) => {
+        setComponent(() => comp);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to load component for preview:', err);
+        setLoading(false);
+      });
+  }, [projectId, name, componentVersion]);
+
+  // Measure component's natural size using ResizeObserver
+  useEffect(() => {
+    if (!Component || !componentRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setNaturalSize({ width: Math.round(width), height: Math.round(height) });
+        }
+      }
+    });
+
+    observer.observe(componentRef.current);
+    return () => observer.disconnect();
+  }, [Component]);
+
+  // Calculate scale to fit within max bounds
+  const maxWidth = 220; // panel width minus padding
+  const maxHeight = 100; // reasonable max
+  const scale = naturalSize ? Math.min(
+    maxWidth / naturalSize.width,
+    maxHeight / naturalSize.height,
+    1 // don't scale up
+  ) : 1;
 
   return (
     <div
@@ -373,14 +431,26 @@ function DraggableComponentCard({ name }: { name: string }) {
         isDragging ? 'opacity-50' : ''
       }`}
     >
-      {/* Preview iframe - 120px height */}
-      <div className="h-[120px] overflow-hidden bg-neutral-50 pointer-events-none">
-        <iframe
-          src={`${config.apiBaseUrl}/preview/${name}?v=${componentVersion}`}
-          className="w-full h-full border-none"
-          sandbox="allow-scripts"
-          title={`Preview of ${name}`}
-        />
+      {/* Preview container - centers the component */}
+      <div
+        className="bg-neutral-50 pointer-events-none flex items-center justify-center overflow-hidden"
+        style={{ minHeight: 50, padding: 8 }}
+      >
+        {loading && (
+          <div className="text-xs text-neutral-400">Loading...</div>
+        )}
+        {!loading && Component && (
+          <div
+            ref={componentRef}
+            className="inline-block"
+            style={{
+              transformOrigin: 'center',
+              transform: scale !== 1 ? `scale(${scale})` : undefined,
+            }}
+          >
+            <Component />
+          </div>
+        )}
       </div>
 
       {/* Component name label */}
@@ -393,10 +463,12 @@ function DraggableComponentCard({ name }: { name: string }) {
 
 function LibraryTab() {
   const { availableComponents, setAvailableComponents } = useCanvasStore();
+  const { currentProject } = useProjectStore();
 
   const loadComponents = async () => {
+    if (!currentProject) return;
     try {
-      const result = await listComponents();
+      const result = await listProjectComponents(currentProject.id);
       if (result.status === 'success' && result.components) {
         setAvailableComponents(result.components);
       }
@@ -407,7 +479,15 @@ function LibraryTab() {
 
   useEffect(() => {
     loadComponents();
-  }, []);
+  }, [currentProject?.id]);
+
+  if (!currentProject) {
+    return (
+      <div className="flex items-center justify-center h-full text-neutral-400">
+        <p className="text-sm">No project selected</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -431,6 +511,7 @@ function LibraryTab() {
           <DraggableComponentCard
             key={component.name}
             name={component.name}
+            projectId={currentProject.id}
           />
         ))}
 

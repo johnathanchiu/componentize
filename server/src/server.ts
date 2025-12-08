@@ -7,6 +7,8 @@ import { interactionAgent} from './agents/interactionAgent';
 import { fileService } from './services/fileService';
 import { exportService } from './services/exportService';
 import { previewService } from './services/previewService';
+import { projectService } from './services/projectService';
+import { viteDevServerService } from './services/viteDevServerService';
 import type {
   GenerateComponentRequest,
   EditComponentRequest,
@@ -239,16 +241,261 @@ server.get<{ Params: { componentName: string } }>('/preview/:componentName', asy
 });
 
 // ============================================================================
+// Project Endpoints
+// ============================================================================
+
+/**
+ * Create a new project
+ */
+server.post<{ Body: { name: string } }>('/api/projects', async (request, reply) => {
+  const { name } = request.body;
+
+  if (!name || name.trim().length === 0) {
+    return reply.code(400).send({
+      status: 'error',
+      message: 'Project name is required',
+    });
+  }
+
+  try {
+    const project = await projectService.createProject(name.trim());
+    return { status: 'success', project };
+  } catch (error) {
+    return reply.code(500).send({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to create project',
+    });
+  }
+});
+
+/**
+ * List all projects
+ */
+server.get('/api/projects', async () => {
+  const projects = await projectService.listProjects();
+  return { status: 'success', projects };
+});
+
+/**
+ * Get a specific project
+ */
+server.get<{ Params: { id: string } }>('/api/projects/:id', async (request, reply) => {
+  const { id } = request.params;
+  const project = await projectService.getProject(id);
+
+  if (!project) {
+    return reply.code(404).send({
+      status: 'error',
+      message: 'Project not found',
+    });
+  }
+
+  return { status: 'success', project };
+});
+
+/**
+ * Delete a project
+ */
+server.delete<{ Params: { id: string } }>('/api/projects/:id', async (request, reply) => {
+  const { id } = request.params;
+
+  try {
+    await projectService.deleteProject(id);
+    return { status: 'success', message: 'Project deleted' };
+  } catch (error) {
+    return reply.code(500).send({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to delete project',
+    });
+  }
+});
+
+/**
+ * List components in a project
+ */
+server.get<{ Params: { id: string } }>('/api/projects/:id/components', async (request) => {
+  const { id } = request.params;
+  return await fileService.listProjectComponents(id);
+});
+
+/**
+ * Get component code in a project
+ */
+server.get<{ Params: { id: string; componentName: string } }>('/api/projects/:id/components/:componentName/code', async (request) => {
+  const { id, componentName } = request.params;
+  return await fileService.readProjectComponent(id, componentName);
+});
+
+/**
+ * Get raw component source (plain text for direct rendering)
+ */
+server.get<{ Params: { id: string; componentName: string } }>('/api/projects/:id/components/:componentName', async (request, reply) => {
+  const { id, componentName } = request.params;
+  const result = await fileService.readProjectComponent(id, componentName);
+
+  if (result.status === 'success' && result.content) {
+    reply.type('text/plain').send(result.content);
+  } else {
+    reply.code(404).send('Component not found');
+  }
+});
+
+/**
+ * Generate a component in a project with streaming
+ */
+server.post<{
+  Params: { id: string };
+  Body: GenerateComponentRequest;
+}>('/api/projects/:id/generate-component-stream', async (request, reply) => {
+  const { id } = request.params;
+  const { prompt, componentName } = request.body;
+
+  if (!prompt || !componentName) {
+    return reply.code(400).send({
+      status: 'error',
+      message: 'Both prompt and componentName are required',
+    });
+  }
+
+  // Set project context on the agent
+  componentAgent.setProjectContext(id);
+
+  // Set headers for Server-Sent Events
+  reply.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': request.headers.origin || '*',
+    'Access-Control-Allow-Credentials': 'true',
+  });
+
+  try {
+    for await (const event of componentAgent.generateComponent(prompt, componentName)) {
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+    }
+  } catch (error) {
+    reply.raw.write(`data: ${JSON.stringify({
+      type: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    })}\n\n`);
+  } finally {
+    componentAgent.clearProjectContext();
+  }
+
+  reply.raw.end();
+});
+
+/**
+ * Edit a component in a project with streaming
+ */
+server.post<{
+  Params: { id: string };
+  Body: EditComponentRequest;
+}>('/api/projects/:id/edit-component-stream', async (request, reply) => {
+  const { id } = request.params;
+  const { componentName, editDescription } = request.body;
+
+  if (!componentName || !editDescription) {
+    return reply.code(400).send({
+      status: 'error',
+      message: 'Both componentName and editDescription are required',
+    });
+  }
+
+  // Set project context on the agent
+  componentAgent.setProjectContext(id);
+
+  // Set headers for Server-Sent Events
+  reply.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': request.headers.origin || '*',
+    'Access-Control-Allow-Credentials': 'true',
+  });
+
+  try {
+    for await (const event of componentAgent.editComponent(componentName, editDescription)) {
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+    }
+  } catch (error) {
+    reply.raw.write(`data: ${JSON.stringify({
+      type: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    })}\n\n`);
+  } finally {
+    componentAgent.clearProjectContext();
+  }
+
+  reply.raw.end();
+});
+
+/**
+ * Get Vite dev server info
+ */
+server.get('/api/vite-server', async () => {
+  return {
+    status: 'success',
+    port: viteDevServerService.getPort(),
+    ready: viteDevServerService.isServerReady(),
+  };
+});
+
+// ============================================================================
+// Canvas Endpoints
+// ============================================================================
+
+/**
+ * Get canvas state for a project
+ */
+server.get<{ Params: { id: string } }>('/api/projects/:id/canvas', async (request) => {
+  const { id } = request.params;
+  const components = await projectService.getCanvas(id);
+  return { status: 'success', components };
+});
+
+/**
+ * Save canvas state for a project
+ */
+server.put<{ Params: { id: string }; Body: { components: any[] } }>('/api/projects/:id/canvas', async (request, reply) => {
+  const { id } = request.params;
+  const { components } = request.body;
+
+  if (!Array.isArray(components)) {
+    return reply.code(400).send({
+      status: 'error',
+      message: 'components must be an array',
+    });
+  }
+
+  try {
+    await projectService.saveCanvas(id, components);
+    return { status: 'success' };
+  } catch (error) {
+    return reply.code(500).send({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to save canvas',
+    });
+  }
+});
+
+// ============================================================================
 // Start Server
 // ============================================================================
 
 const start = async () => {
   try {
+    // Start Vite dev server first
+    console.log('Starting Vite dev server...');
+    await viteDevServerService.start();
+
+    // Then start the API server
     await server.listen({ port: appConfig.port, host: '0.0.0.0' });
 
     console.log('');
     console.log('🚀 Component Builder API v2.0 (TypeScript)');
     console.log(`📍 Server running on http://localhost:${appConfig.port}`);
+    console.log(`🎨 Vite preview server on http://localhost:${viteDevServerService.getPort()}`);
     console.log(`🌍 Environment: ${appConfig.env}`);
     console.log(`🤖 AI Model: ${appConfig.api.modelName}`);
     console.log('💡 Make sure to set ANTHROPIC_API_KEY in .env file');

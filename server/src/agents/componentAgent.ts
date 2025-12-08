@@ -72,24 +72,64 @@ CODE REQUIREMENTS:
 - Functional components with hooks
 - Accessible (aria-labels, semantic HTML)
 - Export as default
-- Handle edge cases (loading, error, empty states)`;
+- Handle edge cases (loading, error, empty states)
+
+SHADCN/UI COMPONENTS AVAILABLE:
+You have access to the following pre-installed shadcn/ui components. Use them to create beautiful, polished UIs:
+  import { Button } from "@/components/ui/button"
+  import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
+  import { Input } from "@/components/ui/input"
+  import { Label } from "@/components/ui/label"
+  import { Textarea } from "@/components/ui/textarea"
+  import { Badge } from "@/components/ui/badge"
+  import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+  import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+  import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
+  import { Checkbox } from "@/components/ui/checkbox"
+  import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+  import { Separator } from "@/components/ui/separator"
+  import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+
+Prefer these components over raw HTML when appropriate for a polished look.`;
 
 export class ComponentAgent extends BaseAgent {
+  private projectId: string | null = null;
+
   constructor() {
     super(COMPONENT_TOOLS, COMPONENT_SYSTEM_PROMPT);
+  }
+
+  /**
+   * Set the project context for subsequent operations
+   */
+  setProjectContext(projectId: string): void {
+    this.projectId = projectId;
+  }
+
+  /**
+   * Clear the project context
+   */
+  clearProjectContext(): void {
+    this.projectId = null;
   }
 
   protected async executeTool(toolName: string, toolInput: unknown): Promise<ToolResult> {
     switch (toolName) {
       case 'create_component': {
         const { name, code } = toolInput as { name: string; code: string };
-        const result = await fileService.createComponent(name, code);
+        // Use project-scoped method if projectId is set
+        const result = this.projectId
+          ? await fileService.createProjectComponent(this.projectId, name, code)
+          : await fileService.createComponent(name, code);
         return { ...result, component_name: result.component_name };
       }
 
       case 'read_component': {
         const { name } = toolInput as { name: string };
-        const result = await fileService.readComponent(name);
+        // Use project-scoped method if projectId is set
+        const result = this.projectId
+          ? await fileService.readProjectComponent(this.projectId, name)
+          : await fileService.readComponent(name);
         if (result.status === 'success') {
           return {
             status: 'success',
@@ -107,7 +147,10 @@ export class ComponentAgent extends BaseAgent {
 
       case 'update_component': {
         const { name, code } = toolInput as { name: string; code: string };
-        const result = await fileService.updateComponent(name, code);
+        // Use project-scoped method if projectId is set
+        const result = this.projectId
+          ? await fileService.updateProjectComponent(this.projectId, name, code)
+          : await fileService.updateComponent(name, code);
         return { ...result, component_name: result.component_name };
       }
 
@@ -146,8 +189,10 @@ Call create_component now.`
   async *editComponent(componentName: string, editDescription: string): AsyncGenerator<StreamEvent> {
     yield { type: 'progress', message: `Editing '${componentName}'...`, timestamp: Date.now() };
 
-    // Check component exists
-    const exists = await fileService.readComponent(componentName);
+    // Check component exists (use project-scoped method if projectId is set)
+    const exists = this.projectId
+      ? await fileService.readProjectComponent(this.projectId, componentName)
+      : await fileService.readComponent(componentName);
     if (exists.status !== 'success') {
       yield { type: 'error', message: `Component '${componentName}' not found`, timestamp: Date.now() };
       return;

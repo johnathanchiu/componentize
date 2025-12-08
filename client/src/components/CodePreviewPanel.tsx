@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Code2, RefreshCw, X } from 'lucide-react';
-import { getComponentCode } from '../lib/api';
+import { getProjectComponentCode } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
+import { useProjectStore } from '../store/projectStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ResizeHandle } from './ResizeHandle';
 
 export function CodePreviewPanel() {
   const { generationMode, editingComponentName, streamStatus } = useCanvasStore();
+  const { currentProject } = useProjectStore();
   const [code, setCode] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
@@ -50,13 +52,13 @@ export function CodePreviewPanel() {
   }, [streamStatus, editingComponentName]);
 
   const loadCode = async () => {
-    if (!editingComponentName) return;
+    if (!editingComponentName || !currentProject) return;
 
     setIsLoading(true);
     setError('');
 
     try {
-      const result = await getComponentCode(editingComponentName);
+      const result = await getProjectComponentCode(currentProject.id, editingComponentName);
       if (result.status === 'success') {
         setCode(result.content || '');
       } else {
