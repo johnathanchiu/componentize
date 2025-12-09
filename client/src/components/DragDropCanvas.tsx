@@ -39,6 +39,7 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
   const [componentError, setComponentError] = useState<{ message: string; stack?: string } | null>(null);
   const [naturalSize, setNaturalSize] = useState<Size | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resizePreview, setResizePreview] = useState<Size | null>(null);
   const componentRef = useRef<HTMLDivElement>(null);
   const { isGenerating, generationMode, editingComponentName, componentVersions } = useCanvasStore();
 
@@ -172,9 +173,13 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
     [size, naturalSize]
   );
 
+  // Active size includes preview during resize, or falls back to displaySize
+  const activeSize = resizePreview || displaySize;
+
   // Calculate scale factor for when user has resized the component
-  const scale = size && naturalSize && naturalSize.width > 0
-    ? size.width / naturalSize.width
+  // Use activeSize so scale updates live during resize
+  const scale = naturalSize && naturalSize.width > 0
+    ? activeSize.width / naturalSize.width
     : 1;
 
   const style = {
@@ -245,8 +250,16 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
       </div>
 
       <Resizable
-        size={displaySize}
+        size={activeSize}
+        onResize={(_e, _direction, _ref, d) => {
+          // Update preview during resize for live scaling
+          setResizePreview({
+            width: displaySize.width + d.width,
+            height: displaySize.height + d.height,
+          });
+        }}
         onResizeStop={(_e, _direction, _ref, d) => {
+          setResizePreview(null); // Clear preview
           const newWidth = displaySize.width + d.width;
           const newHeight = displaySize.height + d.height;
           onResize(newWidth, newHeight);
