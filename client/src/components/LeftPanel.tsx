@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type ComponentType } from 'react';
 import { Wand2, Loader2, X, Pencil, Wrench, RefreshCw, Trash2 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
-import { generateProjectComponentStream, editProjectComponentStream, listProjectComponents, deleteProjectComponent } from '../lib/api';
+import { generateStream, editProjectComponentStream, listProjectComponents, deleteProjectComponent } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
 import { useProjectStore } from '../store/projectStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
@@ -17,7 +17,6 @@ import type { Size } from '../types/index';
 
 function CreateTab() {
   const [prompt, setPrompt] = useState('');
-  const [componentName, setComponentName] = useState('');
   const [error, setError] = useState('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -47,10 +46,8 @@ function CreateTab() {
   // Reset form when switching modes
   useEffect(() => {
     if (generationMode === 'create') {
-      setComponentName('');
       setPrompt('');
     } else if (editingComponentName) {
-      setComponentName(editingComponentName);
       setPrompt('');
     }
   }, [generationMode, editingComponentName]);
@@ -65,26 +62,23 @@ function CreateTab() {
   // Shared function to handle streaming response
   const handleStreamResponse = async (
     stream: AsyncGenerator<any>,
-    targetName: string,
     isCreateMode: boolean
   ) => {
     for await (const event of stream) {
       addStreamingEvent(event);
 
+      // Handle canvas_update events to add new components
+      if (event.type === 'canvas_update' && event.data?.canvasComponent) {
+        const comp = event.data.canvasComponent;
+        addAvailableComponent({ name: comp.componentName, filepath: '' });
+        incrementComponentVersion(comp.componentName);
+        setCurrentComponentName(comp.componentName);
+      }
+
       if (event.type === 'success') {
-        // Increment version to trigger iframe refresh in canvas
-        incrementComponentVersion(targetName);
-
-        if (isCreateMode) {
-          addAvailableComponent({ name: targetName, filepath: '' });
-        }
-
         // Clear form after delay
         setTimeout(() => {
           setPrompt('');
-          if (isCreateMode) {
-            setComponentName('');
-          }
           // Auto-collapse after success
           setTimeout(() => {
             setStreamPanelExpanded(false);
@@ -138,7 +132,7 @@ Call read_component to see the code, find the bug, and call update_component wit
         return;
       }
       const stream = editProjectComponentStream(currentProject.id, targetName, fixPrompt);
-      await handleStreamResponse(stream, targetName, false);
+      await handleStreamResponse(stream, false);
     } catch (err) {
       setError('Network error. Make sure the backend server is running.');
       setStreamStatus('error');
@@ -154,29 +148,19 @@ Call read_component to see the code, find the bug, and call update_component wit
       return;
     }
 
-    if (generationMode === 'create' && !componentName.trim()) {
-      setError('Please provide a component name');
-      return;
-    }
-
-    if (generationMode === 'create' && !/^[A-Z][a-zA-Z0-9]*$/.test(componentName)) {
-      setError('Component name must start with uppercase and contain only letters/numbers');
-      return;
-    }
-
     setError('');
-    const targetName = generationMode === 'create' ? componentName : editingComponentName!;
 
-    // Add session divider instead of clearing
-    const modeLabel = generationMode === 'create' ? 'Creating' : 'Editing';
+    // Add session divider
+    const modeLabel = generationMode === 'create' ? 'Generating' : 'Editing';
+    const targetLabel = generationMode === 'create' ? 'components' : editingComponentName!;
     addStreamingEvent({
       type: 'session_start',
-      message: `${modeLabel} ${targetName}`,
+      message: `${modeLabel} ${targetLabel}`,
       timestamp: Date.now(),
-      data: { mode: generationMode, componentName: targetName },
+      data: { mode: generationMode, componentName: targetLabel },
     });
 
-    setCurrentComponentName(targetName);
+    setCurrentComponentName(targetLabel);
     setIsGenerating(true);
     setStreamPanelExpanded(true);
     setStreamStatus('thinking');
@@ -187,11 +171,13 @@ Call read_component to see the code, find the bug, and call update_component wit
         setStreamStatus('error');
         return;
       }
-      const stream = generationMode === 'create'
-        ? generateProjectComponentStream(currentProject.id, prompt, targetName)
-        : editProjectComponentStream(currentProject.id, targetName, prompt);
 
-      await handleStreamResponse(stream, targetName, generationMode === 'create');
+      // Use unified generateStream for create, editProjectComponentStream for edits
+      const stream = generationMode === 'create'
+        ? generateStream(currentProject.id, prompt)
+        : editProjectComponentStream(currentProject.id, editingComponentName!, prompt);
+
+      await handleStreamResponse(stream, generationMode === 'create');
     } catch (err) {
       setError('Network error. Make sure the backend server is running.');
       setStreamStatus('error');
@@ -233,18 +219,18 @@ Call read_component to see the code, find the bug, and call update_component wit
     }
   };
 
+  const getPlaceholder = () => {
+    if (generationMode === 'edit') {
+      return `Describe changes...`;
+    }
+    return 'Describe what you want... (e.g., "a blue button" or "a SaaS landing page")';
+  };
+
   const getButtonLabel = () => {
     if (isGenerating) {
       return generationMode === 'create' ? 'Generating...' : 'Updating...';
     }
     return generationMode === 'create' ? 'Generate' : 'Update';
-  };
-
-  const getPlaceholder = () => {
-    if (generationMode === 'edit') {
-      return `Describe changes...`;
-    }
-    return 'Describe your component...';
   };
 
   return (
@@ -259,8 +245,8 @@ Call read_component to see the code, find the bug, and call update_component wit
                 {streamStatus === 'success'
                   ? `${currentComponentName} ${generationMode === 'create' ? 'created' : 'updated'}!`
                   : streamStatus === 'error'
-                  ? `${getModeLabel()} failed`
-                  : `${getModeLabel()} ${currentComponentName}...`}
+                    ? `${getModeLabel()} failed`
+                    : `${getModeLabel()} ${currentComponentName}...`}
               </span>
             </div>
             {!isGenerating && streamingEvents.length > 0 && (
@@ -310,19 +296,6 @@ Call read_component to see the code, find the bug, and call update_component wit
           </div>
         )}
 
-        {/* Component name (create mode only) */}
-        {generationMode === 'create' && (
-          <input
-            type="text"
-            value={componentName}
-            onChange={(e) => setComponentName(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="ComponentName"
-            className="w-full px-3 py-2 mb-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
-            disabled={isGenerating}
-          />
-        )}
-
         {/* Prompt textarea - only show when not in fix mode */}
         {generationMode !== 'fix' && (
           <textarea
@@ -331,7 +304,7 @@ Call read_component to see the code, find the bug, and call update_component wit
             onKeyDown={handleKeyDown}
             placeholder={getPlaceholder()}
             className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
-            rows={3}
+            rows={4}
             disabled={isGenerating}
           />
         )}
@@ -340,10 +313,11 @@ Call read_component to see the code, find the bug, and call update_component wit
         {generationMode !== 'fix' && (
           <button
             onClick={handleGenerate}
-            disabled={isGenerating || !prompt.trim() || (generationMode === 'create' && !componentName.trim())}
-            className={`w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 text-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
-              isEditMode ? 'bg-purple-600 hover:bg-purple-700' : 'bg-neutral-900 hover:bg-neutral-800'
-            }`}
+            disabled={isGenerating || !prompt.trim()}
+            className={`w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 text-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all ${isEditMode
+              ? 'bg-purple-600 hover:bg-purple-700'
+              : 'bg-neutral-900 hover:bg-neutral-800'
+              }`}
           >
             {isGenerating ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -427,9 +401,8 @@ function DraggableComponentCard({ name, projectId, onDelete }: { name: string; p
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={`group/card relative rounded-lg border border-neutral-200 overflow-hidden cursor-grab active:cursor-grabbing hover:border-neutral-300 transition-colors ${
-        isDragging ? 'opacity-50' : ''
-      }`}
+      className={`group/card relative rounded-lg border border-neutral-200 overflow-hidden cursor-grab active:cursor-grabbing hover:border-neutral-300 transition-colors ${isDragging ? 'opacity-50' : ''
+        }`}
     >
       {/* Delete button - floats in top-right corner */}
       <button
@@ -591,22 +564,20 @@ export function LeftPanel() {
         <button
           onClick={() => setActiveTab('create')}
           onMouseEnter={() => setActiveTab('create')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-            activeTab === 'create'
-              ? 'text-neutral-900 border-b-2 border-neutral-900'
-              : 'text-neutral-500 hover:text-neutral-700'
-          }`}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'create'
+            ? 'text-neutral-900 border-b-2 border-neutral-900'
+            : 'text-neutral-500 hover:text-neutral-700'
+            }`}
         >
           Create
         </button>
         <button
           onClick={() => setActiveTab('library')}
           onMouseEnter={() => setActiveTab('library')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-            activeTab === 'library'
-              ? 'text-neutral-900 border-b-2 border-neutral-900'
-              : 'text-neutral-500 hover:text-neutral-700'
-          }`}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'library'
+            ? 'text-neutral-900 border-b-2 border-neutral-900'
+            : 'text-neutral-500 hover:text-neutral-700'
+            }`}
         >
           Library
         </button>

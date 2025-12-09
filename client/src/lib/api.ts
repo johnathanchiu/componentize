@@ -226,19 +226,19 @@ export async function deleteProjectComponent(projectId: string, componentName: s
 }
 
 /**
- * Generate component in a project with streaming progress
+ * Unified generation endpoint - handles creating and editing components
+ * Agent decides whether to create 1 or multiple components based on request complexity
  */
-export async function* generateProjectComponentStream(
+export async function* generateStream(
   projectId: string,
-  prompt: string,
-  componentName: string
+  prompt: string
 ): AsyncGenerator<StreamEvent> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/generate-component-stream`, {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/generate-stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ prompt, componentName }),
+    body: JSON.stringify({ prompt }),
   });
 
   if (!response.body) {
@@ -263,42 +263,22 @@ export async function* generateProjectComponentStream(
   }
 }
 
+// Legacy aliases - kept for backwards compatibility
+export const generateProjectComponentStream = generateStream;
+export const generatePageStream = generateStream;
+
 /**
  * Edit component in a project with streaming progress
+ * Routes through the unified endpoint with an edit prompt
  */
 export async function* editProjectComponentStream(
   projectId: string,
   componentName: string,
   editDescription: string
 ): AsyncGenerator<StreamEvent> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/edit-component-stream`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ componentName, editDescription }),
-  });
-
-  if (!response.body) {
-    throw new Error('No response body');
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    const chunk = decoder.decode(value);
-    const lines = chunk.split('\n');
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        yield JSON.parse(line.slice(6)) as StreamEvent;
-      }
-    }
-  }
+  // Route edit requests through unified endpoint with context
+  const editPrompt = `Edit the existing component "${componentName}": ${editDescription}`;
+  yield* generateStream(projectId, editPrompt);
 }
 
 // ============================================

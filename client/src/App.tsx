@@ -7,6 +7,7 @@ import { DragDropCanvas } from './components/DragDropCanvas';
 import { ExportButton } from './components/ExportButton';
 import { CodePreviewPanel } from './components/CodePreviewPanel';
 import { ProjectsPage } from './components/projects/ProjectsPage';
+import { PageGenerationOverlay } from './components/page-generation';
 import { useCanvasStore } from './store/canvasStore';
 import { useProjectStore, type Project } from './store/projectStore';
 import { getProject } from './lib/api';
@@ -187,7 +188,9 @@ function App() {
               {currentProject.name}
             </h1>
           </div>
-          <ExportButton />
+          <div className="flex items-center gap-3">
+            <ExportButton />
+          </div>
         </header>
 
         {/* Main content area */}
@@ -196,8 +199,9 @@ function App() {
           <LeftPanel />
 
           {/* Canvas area - full height */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 relative">
             <DragDropCanvas />
+            <PageGenerationOverlay />
           </div>
 
           {/* Right panel - Code preview when editing */}
@@ -213,6 +217,7 @@ function App() {
           </div>
         ) : null}
       </DragOverlay>
+
     </DndContext>
   );
 }

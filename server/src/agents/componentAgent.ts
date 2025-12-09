@@ -1,21 +1,88 @@
+import { v4 as uuidv4 } from 'uuid';
 import { BaseAgent, type Tool, type ToolResult } from './baseAgent';
 import { fileService } from '../services/fileService';
-import type { StreamEvent } from '../../../shared/types';
+import { projectService } from '../services/projectService';
+import type { StreamEvent, CanvasComponent, ComponentPlan } from '../../../shared/types';
+
+// Default position when not specified by agent
+const DEFAULT_POSITION = { x: 400, y: 300 };
+const DEFAULT_SIZE = { width: 300, height: 200 };
+const MAX_COMPONENT_LINES = 50;
 
 const COMPONENT_TOOLS: Tool[] = [
   {
+    name: 'plan_components',
+    description: 'Plan which components to create for a complex request. Use this for landing pages, dashboards, or any request requiring multiple components. Skip for simple single-component requests.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        components: {
+          type: 'array',
+          description: 'List of components to create',
+          items: {
+            type: 'object',
+            properties: {
+              name: {
+                type: 'string',
+                description: 'PascalCase component name (e.g., HeroHeadline, PricingCard)'
+              },
+              description: {
+                type: 'string',
+                description: 'What this component should look like and do'
+              },
+              position: {
+                type: 'object',
+                description: 'Optional position on canvas',
+                properties: {
+                  x: { type: 'number' },
+                  y: { type: 'number' }
+                }
+              },
+              size: {
+                type: 'object',
+                description: 'Optional size',
+                properties: {
+                  width: { type: 'number' },
+                  height: { type: 'number' }
+                }
+              }
+            },
+            required: ['name', 'description']
+          }
+        }
+      },
+      required: ['components']
+    }
+  },
+  {
     name: 'create_component',
-    description: 'Create a new React TypeScript component file with Tailwind CSS styling. Use this for new components.',
+    description: 'Create a new React TypeScript component and place it on the canvas. For simple requests, call this directly. For complex requests, call plan_components first.',
     input_schema: {
       type: 'object',
       properties: {
         name: {
           type: 'string',
-          description: 'Component name in PascalCase (e.g., Button, PricingCard, HeroSection)'
+          description: 'Component name in PascalCase (e.g., Button, PricingCard)'
         },
         code: {
           type: 'string',
           description: 'The complete React TypeScript component code including imports, types, and export'
+        },
+        position: {
+          type: 'object',
+          description: 'Optional position on canvas. If omitted, defaults to center (400, 300)',
+          properties: {
+            x: { type: 'number' },
+            y: { type: 'number' }
+          }
+        },
+        size: {
+          type: 'object',
+          description: 'Optional size. If omitted, defaults to 300x200',
+          properties: {
+            width: { type: 'number' },
+            height: { type: 'number' }
+          }
         }
       },
       required: ['name', 'code']
@@ -55,16 +122,37 @@ const COMPONENT_TOOLS: Tool[] = [
   }
 ];
 
-const COMPONENT_SYSTEM_PROMPT = `You are an expert React/TypeScript developer. Your ONLY job is to write and modify React components.
+const SYSTEM_PROMPT = `You are an expert React/TypeScript developer. Your job is to create beautiful, functional components.
 
-CRITICAL RULES - FOLLOW EXACTLY:
-1. ALWAYS use tools. Never respond with just text.
-2. When creating: call create_component with the complete code.
-3. When editing: first call read_component, then call update_component with the COMPLETE updated code.
-4. When fixing errors: read the component, identify the bug, fix it, and save with update_component.
-5. NEVER ask questions. Make reasonable decisions and proceed.
-6. NEVER explain what you'll do. Just do it.
-7. Write working code on the first attempt.
+WORKFLOW:
+- SIMPLE requests (button, card, single form): Call create_component directly - no planning needed
+- COMPLEX requests (landing page, dashboard, multiple elements): Call plan_components first, then create_component for each
+- EDIT requests (modify existing component): Call read_component first, then update_component
+
+ATOMIC COMPONENT RULES:
+- Each component does ONE thing - if it has multiple responsibilities, break it up
+- Target: 20-30 lines of code (hard limit: 50 lines)
+- No internal layout grids - user arranges components on canvas
+- Examples of atomic vs non-atomic:
+  ✓ HeroHeadline (just the headline text with styling)
+  ✓ HeroCTA (just the call-to-action button)
+  ✓ HeroImage (just the hero image)
+  ✗ HeroSection (text + button + image combined)
+  ✓ PricingPrice (just "$99/month" with styling)
+  ✓ PricingFeatureList (just the feature bullets)
+  ✓ PricingCTA (just the "Get Started" button)
+  ✗ PricingCard (everything combined)
+- Name components descriptively: HeroHeadline, PricingCardPro, EmailSignupForm
+
+POSITIONING:
+- Look at CURRENT CANVAS in the user message to see existing component positions
+- Place new components to avoid overlap with existing ones
+- Common layout patterns:
+  - Header/nav at top (y: 0-60)
+  - Hero content (y: 60-200)
+  - Cards in horizontal row (same y, x: 100, 400, 700)
+  - Main content in middle (y: 300-500)
+  - Footer at bottom (y: 600+)
 
 CODE REQUIREMENTS:
 - TypeScript with proper types (no 'any' unless necessary)
@@ -72,10 +160,8 @@ CODE REQUIREMENTS:
 - Functional components with hooks
 - Accessible (aria-labels, semantic HTML)
 - Export as default
-- Handle edge cases (loading, error, empty states)
 
 SHADCN/UI COMPONENTS AVAILABLE:
-You have access to the following pre-installed shadcn/ui components. Use them to create beautiful, polished UIs:
   import { Button } from "@/components/ui/button"
   import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
   import { Input } from "@/components/ui/input"
@@ -90,31 +176,52 @@ You have access to the following pre-installed shadcn/ui components. Use them to
   import { Separator } from "@/components/ui/separator"
   import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
-Prefer these components over raw HTML when appropriate for a polished look.
+LUCIDE ICONS AVAILABLE:
+  ArrowRight, ArrowLeft, Check, CheckCircle, ChevronDown, ChevronUp, Clock, Copy, Download,
+  Edit, ExternalLink, Eye, Heart, Home, Info, Link, Loader2, Lock, Mail, Menu, Minus, Moon,
+  Phone, Plus, Search, Send, Settings, Share, ShoppingCart, Sparkles, Star, Sun, Trash,
+  Upload, User, Users, X, Zap, AlertCircle, Bell, Calendar, CreditCard, Globe, MapPin
 
-SHARED STATE (Inter-Component Communication):
-Use useSharedState to share state between components on the canvas. This allows components to communicate with each other.
-
-Usage:
+SHARED STATE (for inter-component communication):
   const [value, setValue] = useSharedState('keyName', defaultValue);
 
-Examples:
-  // Counter that can be controlled by multiple components
-  const [count, setCount] = useSharedState('counter', 0);
+Example: FilterPanel and ProductGrid sharing filters
+  // In FilterPanel
+  const [filters, setFilters] = useSharedState('filters', {});
 
-  // Shared toggle state
-  const [isOpen, setIsOpen] = useSharedState('menuOpen', false);
+  // In ProductGrid
+  const [filters] = useSharedState('filters', {});
 
-  // Read-only access (only destructure first element)
-  const [count] = useSharedState('counter', 0);
+IMPORTANT:
+- ALWAYS use tools. Never respond with just text.
+- When creating, call create_component with complete code.
+- When editing, first call read_component, then update_component.
+- NEVER ask questions. Make reasonable decisions and proceed.
+- Write working code on the first attempt.`;
 
-When the user wants components to interact with each other (e.g., "button controls display", "toggle affects other component"), use useSharedState with a descriptive key name.`;
+interface PlanComponentsInput {
+  components: Array<{
+    name: string;
+    description: string;
+    position?: { x: number; y: number };
+    size?: { width: number; height: number };
+  }>;
+}
+
+interface CreateComponentInput {
+  name: string;
+  code: string;
+  position?: { x: number; y: number };
+  size?: { width: number; height: number };
+}
 
 export class ComponentAgent extends BaseAgent {
   private projectId: string | null = null;
+  private pendingPlan: ComponentPlan[] = [];
+  private createdComponents: string[] = [];
 
   constructor() {
-    super(COMPONENT_TOOLS, COMPONENT_SYSTEM_PROMPT);
+    super(COMPONENT_TOOLS, SYSTEM_PROMPT);
   }
 
   /**
@@ -122,6 +229,8 @@ export class ComponentAgent extends BaseAgent {
    */
   setProjectContext(projectId: string): void {
     this.projectId = projectId;
+    this.pendingPlan = [];
+    this.createdComponents = [];
   }
 
   /**
@@ -129,46 +238,161 @@ export class ComponentAgent extends BaseAgent {
    */
   clearProjectContext(): void {
     this.projectId = null;
+    this.pendingPlan = [];
+    this.createdComponents = [];
+  }
+
+  /**
+   * Validate component size - returns error message if too large, null if OK
+   */
+  private validateComponentSize(name: string, code: string): string | null {
+    const lineCount = code.split('\n').length;
+    if (lineCount > MAX_COMPONENT_LINES) {
+      return `Component "${name}" is ${lineCount} lines, which exceeds the ${MAX_COMPONENT_LINES}-line limit. ` +
+        `Components must be ATOMIC and single-purpose. This component is too complex - break it into smaller pieces. ` +
+        `For example, if this is a "HeroSection", create just "HeroHeadline" (text only) or "HeroCTA" (button only). ` +
+        `Try again with a simpler component under ${MAX_COMPONENT_LINES} lines.`;
+    }
+    return null;
+  }
+
+  /**
+   * Build canvas context string to inject into the user prompt
+   * Shows what components are on canvas and what's available
+   */
+  private async buildCanvasContext(): Promise<string> {
+    if (!this.projectId) {
+      return 'CURRENT CANVAS: Empty (no project set)';
+    }
+
+    const canvas = await projectService.getCanvas(this.projectId);
+    const allComponents = await projectService.listComponents(this.projectId);
+
+    if (canvas.length === 0 && allComponents.length === 0) {
+      return 'CURRENT CANVAS: Empty (no components yet)';
+    }
+
+    // Build list of components on canvas with positions
+    const onCanvas = canvas.map(c => {
+      const pos = `(${c.position.x}, ${c.position.y})`;
+      const size = c.size ? `, ${c.size.width}x${c.size.height}` : '';
+      return `  - ${c.componentName} at ${pos}${size}`;
+    }).join('\n');
+
+    // Find components that exist but aren't on canvas
+    const canvasNames = new Set(canvas.map(c => c.componentName));
+    const available = allComponents.filter(c => !canvasNames.has(c));
+
+    let context = 'CURRENT CANVAS:';
+
+    if (canvas.length > 0) {
+      context += `\nComponents on canvas:\n${onCanvas}`;
+    } else {
+      context += '\nComponents on canvas: (none)';
+    }
+
+    if (available.length > 0) {
+      context += `\n\nAvailable components (not placed): ${available.join(', ')}`;
+    }
+
+    return context;
   }
 
   protected async executeTool(toolName: string, toolInput: unknown): Promise<ToolResult> {
+    if (!this.projectId) {
+      return { status: 'error', message: 'No project context set' };
+    }
+
     switch (toolName) {
+      case 'plan_components': {
+        const { components } = toolInput as PlanComponentsInput;
+
+        // Store the plan
+        this.pendingPlan = components.map(c => ({
+          name: c.name,
+          description: c.description,
+          position: c.position,
+          size: c.size
+        }));
+
+        return {
+          status: 'success',
+          message: `Planned ${components.length} components: ${components.map(c => c.name).join(', ')}. Now create each one.`,
+          plan: this.pendingPlan,
+          totalComponents: components.length
+        };
+      }
+
       case 'create_component': {
-        const { name, code } = toolInput as { name: string; code: string };
-        // Use project-scoped method if projectId is set
-        const result = this.projectId
-          ? await fileService.createProjectComponent(this.projectId, name, code)
-          : await fileService.createComponent(name, code);
-        return { ...result, component_name: result.component_name };
+        const input = toolInput as CreateComponentInput;
+        const { name, code } = input;
+        const position = input.position ?? DEFAULT_POSITION;
+        const size = input.size ?? DEFAULT_SIZE;
+
+        // Validate component size
+        const sizeError = this.validateComponentSize(name, code);
+        if (sizeError) {
+          return { status: 'error', message: sizeError };
+        }
+
+        // Create the component file
+        const result = await fileService.createProjectComponent(this.projectId, name, code);
+
+        if (result.status !== 'success') {
+          return { status: 'error', message: result.message };
+        }
+
+        // Add to canvas
+        const canvasComponent: CanvasComponent = {
+          id: uuidv4(),
+          componentName: name,
+          position,
+          size
+        };
+
+        const existingCanvas = await projectService.getCanvas(this.projectId);
+        existingCanvas.push(canvasComponent);
+        await projectService.saveCanvas(this.projectId, existingCanvas);
+
+        this.createdComponents.push(name);
+
+        return {
+          status: 'success',
+          message: `Created component "${name}" and placed on canvas at (${position.x}, ${position.y})`,
+          component_name: name,
+          canvasComponent
+        };
       }
 
       case 'read_component': {
         const { name } = toolInput as { name: string };
-        // Use project-scoped method if projectId is set
-        const result = this.projectId
-          ? await fileService.readProjectComponent(this.projectId, name)
-          : await fileService.readComponent(name);
+        const result = await fileService.readProjectComponent(this.projectId, name);
+
         if (result.status === 'success') {
           return {
             status: 'success',
             message: `Component '${name}' code:`,
             code: result.content,
             component_name: name,
-            action: 'read',  // Mark as read action so we don't stop the loop
+            action: 'read'  // Mark as read action so we don't stop the loop
           };
         }
         return {
           status: result.status,
-          message: result.message,
+          message: result.message
         };
       }
 
       case 'update_component': {
         const { name, code } = toolInput as { name: string; code: string };
-        // Use project-scoped method if projectId is set
-        const result = this.projectId
-          ? await fileService.updateProjectComponent(this.projectId, name, code)
-          : await fileService.updateComponent(name, code);
+
+        // Validate component size
+        const sizeError = this.validateComponentSize(name, code);
+        if (sizeError) {
+          return { status: 'error', message: sizeError };
+        }
+
+        const result = await fileService.updateProjectComponent(this.projectId, name, code);
         return { ...result, component_name: result.component_name };
       }
 
@@ -181,60 +405,63 @@ export class ComponentAgent extends BaseAgent {
   }
 
   /**
-   * Generate a new component with streaming
+   * Generate components based on user prompt
+   * Can create 1 or multiple components depending on the request complexity
    */
-  async *generateComponent(prompt: string, componentName: string): AsyncGenerator<StreamEvent> {
-    yield { type: 'progress', message: `Creating '${componentName}'...`, timestamp: Date.now() };
-
-    const messages = [
-      {
-        role: 'user' as const,
-        content: `Create component "${componentName}": ${prompt}
-
-Call create_component now.`
-      }
-    ];
-
-    // Run agent loop
-    yield* this.runAgentLoop(messages, (result) => {
-      return result.status === 'success' && result.component_name === componentName;
-    });
-  }
-
-  /**
-   * Edit an existing component with streaming
-   */
-  async *editComponent(componentName: string, editDescription: string): AsyncGenerator<StreamEvent> {
-    yield { type: 'progress', message: `Editing '${componentName}'...`, timestamp: Date.now() };
-
-    // Check component exists (use project-scoped method if projectId is set)
-    const exists = this.projectId
-      ? await fileService.readProjectComponent(this.projectId, componentName)
-      : await fileService.readComponent(componentName);
-    if (exists.status !== 'success') {
-      yield { type: 'error', message: `Component '${componentName}' not found`, timestamp: Date.now() };
+  async *generate(prompt: string): AsyncGenerator<StreamEvent> {
+    if (!this.projectId) {
+      yield { type: 'error', message: 'No project context set', timestamp: Date.now() };
       return;
     }
 
+    yield { type: 'progress', message: 'Processing request...', timestamp: Date.now() };
+
+    // Build canvas context to inject into prompt
+    const canvasContext = await this.buildCanvasContext();
+
     const messages = [
       {
         role: 'user' as const,
-        content: `Edit component "${componentName}": ${editDescription}
+        content: `${canvasContext}
 
-Steps:
-1. Call read_component to get current code
-2. Fix the issue
-3. Call update_component with the complete fixed code
+USER REQUEST: ${prompt}
+
+Based on the complexity of this request:
+- If simple (single button, card, form): Call create_component directly
+- If complex (landing page, multiple elements): Call plan_components first, then create each
 
 Start now.`
       }
     ];
 
-    // Run agent loop - only stop on successful update, not on read
+    // Run agent loop - stop when we have successfully created component(s)
+    // For simple requests: one create_component success
+    // For complex requests: all planned components created
     yield* this.runAgentLoop(messages, (result) => {
-      return result.status === 'success' &&
-             result.component_name === componentName &&
-             result.action !== 'read';
+      // Don't stop on read actions
+      if (result.action === 'read') {
+        return false;
+      }
+
+      // Don't stop on plan_components - need to create the components
+      if (result.plan) {
+        return false;
+      }
+
+      // Success when a component is created/updated
+      if (result.status === 'success' && result.component_name) {
+        // If we have a pending plan, check if all components are done
+        if (this.pendingPlan.length > 0) {
+          const allDone = this.pendingPlan.every(p =>
+            this.createdComponents.includes(p.name)
+          );
+          return allDone;
+        }
+        // No plan means single component - we're done
+        return true;
+      }
+
+      return false;
     });
   }
 }

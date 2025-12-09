@@ -2,9 +2,50 @@
 
 A full-stack TypeScript application for generating, editing, and composing React components using AI. Build interactive UIs through a visual drag-and-drop canvas with real-time AI assistance.
 
+## Product Thesis
+
+**Componentize = Visual Canvas + AI Generation + Real React State**
+
+The landscape of design-to-code tools has a gap:
+
+| Tool | Visual Editing | AI Generation | Live State |
+|------|---------------|---------------|------------|
+| **Figma** | Yes | No | No |
+| **V0/Bolt** | No | Yes | No |
+| **Componentize** | Yes | Yes | **Yes** |
+
+### Why This Matters
+
+- **Figma** excels at visual design, but outputs static assets. Developers must manually recreate all interactivity.
+
+- **V0/Bolt** generate React code from prompts, but you can't visually manipulate the result. It's code-in, code-out.
+
+- **Componentize** bridges both worlds:
+  1. **Describe a page** in natural language → AI plans and generates all components
+  2. **Visually arrange** components on a canvas like Figma
+  3. **Live React state** flows between components - buttons can update counters, forms can submit data, components communicate
+
+### The Key Differentiator: Inter-Component State
+
+Traditional AI code generators output isolated components. Componentize enables **real React state sharing** between components:
+
+```
+┌─────────────────┐    shared state    ┌─────────────────┐
+│   CounterBtn    │ ─────────────────► │   DisplayPanel  │
+│   useState(0)   │                    │   shows count   │
+└─────────────────┘                    └─────────────────┘
+```
+
+- Click a button → Counter updates across components
+- Fill a form → Data flows to other components
+- State defined in one component → Consumed by many
+
+This is what makes Componentize an **agentic Figma** - visual manipulation with the power of live React.
+
 ## Features
 
-- **AI Component Generation with Streaming**: Describe components in natural language with real-time progress feedback
+- **Generate Full Pages from Description**: Describe an entire page in natural language and watch as the AI plans, generates, and places all components automatically with animated progress visualization
+- **AI Component Generation with Streaming**: Describe individual components with real-time progress feedback
 - **Visual + AI Editing**: Edit components visually or use AI for complex changes
 - **AI Interaction Generation**: Add event handlers (onClick, onChange, onSubmit) using natural language
 - **Drag & Drop Canvas**: Visually arrange and resize components

@@ -147,6 +147,8 @@ When writing React components:
         let accumulatedText = '';
         let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
         const pendingToolUses: Array<{ id: string; name: string; input: unknown }> = [];
+        let lastCodeStreamTime = 0;
+        const CODE_STREAM_INTERVAL = 100; // Emit code chunks every 100ms
 
         // Process streaming events
         for await (const event of stream) {
@@ -163,6 +165,15 @@ When writing React components:
                   id: event.content_block.id,
                   name: event.content_block.name,
                   inputJson: '',
+                };
+                yield {
+                  type: 'tool_start',
+                  message: `Calling ${event.content_block.name}...`,
+                  timestamp,
+                  data: {
+                    toolName: event.content_block.name,
+                    toolUseId: event.content_block.id,
+                  }
                 };
               }
               break;
@@ -182,9 +193,35 @@ When writing React components:
                   accumulatedText = '';
                 }
               } else if (event.delta.type === 'input_json_delta') {
-                // Tool input is being streamed
+                // Tool input is being streamed - emit code chunks periodically
                 if (currentToolUse) {
                   currentToolUse.inputJson += event.delta.partial_json;
+
+                  // Emit code streaming events periodically for better UX
+                  if (timestamp - lastCodeStreamTime > CODE_STREAM_INTERVAL) {
+                    // Try to extract code from partial JSON
+                    const codeMatch = currentToolUse.inputJson.match(/"code"\s*:\s*"([^"]*)/);
+                    if (codeMatch && codeMatch[1]) {
+                      // Unescape the JSON string
+                      const partialCode = codeMatch[1]
+                        .replace(/\\n/g, '\n')
+                        .replace(/\\t/g, '\t')
+                        .replace(/\\"/g, '"')
+                        .replace(/\\\\/g, '\\');
+
+                      yield {
+                        type: 'code_streaming',
+                        message: 'Generating code...',
+                        timestamp,
+                        data: {
+                          toolName: currentToolUse.name,
+                          partialCode,
+                          lineCount: partialCode.split('\n').length,
+                        }
+                      };
+                    }
+                    lastCodeStreamTime = timestamp;
+                  }
                 }
               }
               break;
@@ -201,7 +238,7 @@ When writing React components:
                 accumulatedText = '';
               }
 
-              // If we finished a tool use block, emit tool_start event
+              // If we finished a tool use block, parse and queue it
               if (currentToolUse) {
                 try {
                   const toolInput = JSON.parse(currentToolUse.inputJson || '{}');
@@ -211,16 +248,20 @@ When writing React components:
                     input: toolInput,
                   });
 
-                  yield {
-                    type: 'tool_start',
-                    message: `Calling ${currentToolUse.name}...`,
-                    timestamp,
-                    data: {
-                      toolName: currentToolUse.name,
-                      toolInput: this.sanitizeToolInput(toolInput),
-                      toolUseId: currentToolUse.id,
-                    }
-                  };
+                  // Emit final code event with complete code
+                  if (toolInput.code) {
+                    yield {
+                      type: 'code_complete',
+                      message: 'Code generation complete',
+                      timestamp,
+                      data: {
+                        toolName: currentToolUse.name,
+                        code: toolInput.code,
+                        lineCount: toolInput.code.split('\n').length,
+                        componentName: toolInput.name,
+                      }
+                    };
+                  }
                 } catch {
                   // JSON parse error - skip
                 }
@@ -289,6 +330,20 @@ When writing React components:
 
           // Add tool results to messages
           messages.push(...toolResults);
+
+        } else if (response.stop_reason === 'max_tokens') {
+          // Response was truncated - DON'T add the incomplete response
+          // Instead, ask for a simpler approach
+          messages.push({
+            role: 'user',
+            content: 'Your previous response was too long and got truncated. Please try again with a SIMPLER approach. Remember: components must be ATOMIC and under 50 lines. Create a minimal component with fewer features.',
+          });
+
+          yield {
+            type: 'progress',
+            message: 'Response too long, requesting simpler approach...',
+            timestamp: Date.now(),
+          };
 
         } else if (response.stop_reason === 'end_turn') {
           // Claude finished without using tools - this shouldn't happen with tool_choice: any

@@ -10,11 +10,14 @@ import { previewService } from './services/previewService';
 import { projectService } from './services/projectService';
 import { viteDevServerService } from './services/viteDevServerService';
 import type {
-  GenerateComponentRequest,
-  EditComponentRequest,
   GenerateInteractionRequest,
   ExportPageRequest
 } from '../../shared/types';
+
+// Simple request type for unified generation
+interface GenerateRequest {
+  prompt: string;
+}
 
 // Create Fastify instance with logging
 const server = Fastify({
@@ -53,83 +56,11 @@ server.get('/api/health', async () => {
 });
 
 // ============================================================================
-// Component Endpoints (Streaming)
+// Legacy Component Endpoints (kept for backwards compatibility)
 // ============================================================================
 
 /**
- * Generate a new component with streaming progress
- */
-server.post<{ Body: GenerateComponentRequest }>('/api/generate-component-stream', async (request, reply) => {
-  const { prompt, componentName } = request.body;
-
-  if (!prompt || !componentName) {
-    return reply.code(400).send({
-      status: 'error',
-      message: 'Both prompt and componentName are required',
-    });
-  }
-
-  // Set headers for Server-Sent Events (including CORS)
-  reply.raw.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': request.headers.origin || '*',
-    'Access-Control-Allow-Credentials': 'true',
-  });
-
-  try {
-    for await (const event of componentAgent.generateComponent(prompt, componentName)) {
-      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
-    }
-  } catch (error) {
-    reply.raw.write(`data: ${JSON.stringify({
-      type: 'error',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    })}\n\n`);
-  }
-
-  reply.raw.end();
-});
-
-/**
- * Edit an existing component with streaming progress
- */
-server.post<{ Body: EditComponentRequest }>('/api/edit-component-stream', async (request, reply) => {
-  const { componentName, editDescription } = request.body;
-
-  if (!componentName || !editDescription) {
-    return reply.code(400).send({
-      status: 'error',
-      message: 'Both componentName and editDescription are required',
-    });
-  }
-
-  // Set headers for Server-Sent Events (including CORS)
-  reply.raw.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': request.headers.origin || '*',
-    'Access-Control-Allow-Credentials': 'true',
-  });
-
-  try {
-    for await (const event of componentAgent.editComponent(componentName, editDescription)) {
-      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
-    }
-  } catch (error) {
-    reply.raw.write(`data: ${JSON.stringify({
-      type: 'error',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    })}\n\n`);
-  }
-
-  reply.raw.end();
-});
-
-/**
- * Get component code
+ * Get component code (legacy - non-project scoped)
  */
 server.get<{ Params: { componentName: string } }>('/api/get-component-code/:componentName', async (request) => {
   const { componentName } = request.params;
@@ -137,7 +68,7 @@ server.get<{ Params: { componentName: string } }>('/api/get-component-code/:comp
 });
 
 /**
- * List all components
+ * List all components (legacy - non-project scoped)
  */
 server.get('/api/list-components', async () => {
   return await fileService.listComponents();
@@ -358,19 +289,20 @@ server.delete<{ Params: { id: string; componentName: string } }>('/api/projects/
 });
 
 /**
- * Generate a component in a project with streaming
+ * Unified generation endpoint - handles both single components and full pages
+ * The agent decides whether to plan (for complex requests) or create directly (for simple requests)
  */
 server.post<{
   Params: { id: string };
-  Body: GenerateComponentRequest;
-}>('/api/projects/:id/generate-component-stream', async (request, reply) => {
+  Body: GenerateRequest;
+}>('/api/projects/:id/generate-stream', async (request, reply) => {
   const { id } = request.params;
-  const { prompt, componentName } = request.body;
+  const { prompt } = request.body;
 
-  if (!prompt || !componentName) {
+  if (!prompt) {
     return reply.code(400).send({
       status: 'error',
-      message: 'Both prompt and componentName are required',
+      message: 'Prompt is required',
     });
   }
 
@@ -387,52 +319,7 @@ server.post<{
   });
 
   try {
-    for await (const event of componentAgent.generateComponent(prompt, componentName)) {
-      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
-    }
-  } catch (error) {
-    reply.raw.write(`data: ${JSON.stringify({
-      type: 'error',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    })}\n\n`);
-  } finally {
-    componentAgent.clearProjectContext();
-  }
-
-  reply.raw.end();
-});
-
-/**
- * Edit a component in a project with streaming
- */
-server.post<{
-  Params: { id: string };
-  Body: EditComponentRequest;
-}>('/api/projects/:id/edit-component-stream', async (request, reply) => {
-  const { id } = request.params;
-  const { componentName, editDescription } = request.body;
-
-  if (!componentName || !editDescription) {
-    return reply.code(400).send({
-      status: 'error',
-      message: 'Both componentName and editDescription are required',
-    });
-  }
-
-  // Set project context on the agent
-  componentAgent.setProjectContext(id);
-
-  // Set headers for Server-Sent Events
-  reply.raw.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': request.headers.origin || '*',
-    'Access-Control-Allow-Credentials': 'true',
-  });
-
-  try {
-    for await (const event of componentAgent.editComponent(componentName, editDescription)) {
+    for await (const event of componentAgent.generate(prompt)) {
       reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
     }
   } catch (error) {

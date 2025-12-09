@@ -174,6 +174,23 @@ class ProjectService {
     const canvasPath = this.getCanvasPath(projectId);
     await fs.writeFile(canvasPath, JSON.stringify(components, null, 2));
   }
+
+  /**
+   * List all component names in a project
+   * Components are stored as {name}.tsx files in the project directory
+   */
+  async listComponents(projectId: string): Promise<string[]> {
+    const projectDir = this.getProjectDir(projectId);
+
+    try {
+      const entries = await fs.readdir(projectDir);
+      return entries
+        .filter(f => f.endsWith('.tsx'))
+        .map(f => f.replace('.tsx', ''));
+    } catch {
+      return [];
+    }
+  }
 }
 
 export const projectService = new ProjectService();
