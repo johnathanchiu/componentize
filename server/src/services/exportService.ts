@@ -127,13 +127,9 @@ Generated with ❤️ by [Componentize](https://github.com/yourrepo/componentize
         isolatedModules: true,
         noEmit: true,
         jsx: 'react-jsx',
-        strict: true,
-        noUnusedLocals: true,
-        noUnusedParameters: true,
-        noFallthroughCasesInSwitch: true
+        strict: true
       },
-      include: ['**/*.ts', '**/*.tsx'],
-      references: [{ path: './tsconfig.node.json' }]
+      include: ['src', 'pages', 'components']
     }, null, 2);
   }
 

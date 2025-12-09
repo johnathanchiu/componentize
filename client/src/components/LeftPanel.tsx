@@ -375,7 +375,6 @@ function DraggableComponentCard({ name, projectId, onDelete }: { name: string; p
     data: { componentName: name, source: 'library' },
   });
   const { componentVersions } = useCanvasStore();
-  const [isDeleting, setIsDeleting] = useState(false);
   const componentVersion = componentVersions[name] || 0;
   const [Component, setComponent] = useState<ComponentType | null>(null);
   const [naturalSize, setNaturalSize] = useState<Size | null>(null);
@@ -440,7 +439,6 @@ function DraggableComponentCard({ name, projectId, onDelete }: { name: string; p
           onDelete();
         }}
         onPointerDown={(e) => e.stopPropagation()}
-        disabled={isDeleting}
         className="absolute top-1 right-1 z-10 p-1.5 rounded bg-red-500 hover:bg-red-600 text-white opacity-0 group-hover/card:opacity-100 transition-opacity shadow-sm"
         title="Delete component"
       >

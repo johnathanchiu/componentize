@@ -1,4 +1,5 @@
 import type {
+  APIResponse,
   ListComponentsResponse,
   PageLayout,
   StreamEvent,

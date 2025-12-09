@@ -36,6 +36,12 @@ export const PACKAGE_JSON_TEMPLATE = {
   name: 'componentize-export',
   version: '1.0.0',
   private: true,
+  type: 'module',
+  scripts: {
+    'dev': 'vite',
+    'build': 'tsc && vite build',
+    'preview': 'vite preview'
+  },
   dependencies: {
     'react': '^18.0.0',
     'react-dom': '^18.0.0',
