@@ -149,6 +149,13 @@ import {
   ToggleRight,
   Trophy,
   Wrench,
+  // Social/brand icons
+  Github,
+  Twitter,
+  Linkedin,
+  Facebook,
+  Instagram,
+  Youtube,
 } from 'lucide-react';
 
 // The scope of dependencies available to components
@@ -332,6 +339,13 @@ const COMPONENT_SCOPE: Record<string, unknown> = {
   ToggleRight,
   Trophy,
   Wrench,
+  // Social/brand icons
+  Github,
+  Twitter,
+  Linkedin,
+  Facebook,
+  Instagram,
+  Youtube,
 };
 
 /**

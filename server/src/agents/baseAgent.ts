@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { appConfig } from '../config';
-import type { StreamEvent } from '../../../shared/types';
+import type { StreamEvent, CanvasComponent } from '../../../shared/types';
 
 export interface Tool {
   name: string;
@@ -304,6 +304,18 @@ When writing React components:
                   result: result,
                 }
               };
+
+              // Emit canvas_update event if a component was added to canvas
+              if (result.canvasComponent) {
+                yield {
+                  type: 'canvas_update',
+                  message: `Added ${result.component_name} to canvas`,
+                  timestamp: Date.now(),
+                  data: {
+                    canvasComponent: result.canvasComponent as CanvasComponent,
+                  }
+                };
+              }
 
               // Add tool result to messages
               toolResults.push({

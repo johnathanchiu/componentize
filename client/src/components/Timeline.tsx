@@ -23,7 +23,7 @@ export function Timeline({ events }: TimelineProps) {
   return (
     <div
       ref={containerRef}
-      className="max-h-[200px] overflow-y-auto space-y-1 scrollbar-thin"
+      className="h-full overflow-y-auto space-y-1 scrollbar-thin"
     >
       {events.map((event, index) => (
         <TimelineEvent key={`${event.timestamp}-${index}`} event={event} />

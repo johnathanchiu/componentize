@@ -25,6 +25,7 @@ function CreateTab() {
     isGenerating,
     setIsGenerating,
     addAvailableComponent,
+    addToCanvas,
     streamingEvents,
     streamStatus,
     isStreamPanelExpanded,
@@ -70,7 +71,10 @@ function CreateTab() {
       // Handle canvas_update events to add new components
       if (event.type === 'canvas_update' && event.data?.canvasComponent) {
         const comp = event.data.canvasComponent;
+        // Add to library
         addAvailableComponent({ name: comp.componentName, filepath: '' });
+        // Add to canvas with position from agent
+        addToCanvas(comp);
         incrementComponentVersion(comp.componentName);
         setCurrentComponentName(comp.componentName);
       }
@@ -260,7 +264,7 @@ Call read_component to see the code, find the bug, and call update_component wit
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 py-2">
+          <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
             <Timeline events={streamingEvents} />
           </div>
 
@@ -277,8 +281,8 @@ Call read_component to see the code, find the bug, and call update_component wit
         <div className="flex-1" />
       )}
 
-      {/* Form area - at bottom */}
-      <div className="p-3 border-t border-neutral-100">
+      {/* Form area - at bottom, fixed height */}
+      <div className="flex-shrink-0 p-3 border-t border-neutral-100">
         {/* Edit mode indicator */}
         {isEditMode && (
           <div className="flex items-center gap-2 mb-3 px-2 py-1.5 bg-purple-50 rounded-lg">
@@ -304,7 +308,7 @@ Call read_component to see the code, find the bug, and call update_component wit
             onKeyDown={handleKeyDown}
             placeholder={getPlaceholder()}
             className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
-            rows={4}
+            rows={showStreamingArea ? 2 : 4}
             disabled={isGenerating}
           />
         )}

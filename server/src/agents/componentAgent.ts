@@ -177,10 +177,21 @@ SHADCN/UI COMPONENTS AVAILABLE:
   import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
 LUCIDE ICONS AVAILABLE:
-  ArrowRight, ArrowLeft, Check, CheckCircle, ChevronDown, ChevronUp, Clock, Copy, Download,
-  Edit, ExternalLink, Eye, Heart, Home, Info, Link, Loader2, Lock, Mail, Menu, Minus, Moon,
-  Phone, Plus, Search, Send, Settings, Share, ShoppingCart, Sparkles, Star, Sun, Trash,
-  Upload, User, Users, X, Zap, AlertCircle, Bell, Calendar, CreditCard, Globe, MapPin
+  ArrowRight, ArrowLeft, ArrowUp, ArrowDown, Check, CheckCircle, ChevronDown, ChevronUp,
+  ChevronLeft, ChevronRight, Clock, Copy, Download, Edit, ExternalLink, Eye, EyeOff, File,
+  Filter, Heart, Home, Image, Info, Link, Loader2, Lock, LogIn, LogOut, Mail, Menu,
+  MessageCircle, Minus, Moon, MoreHorizontal, MoreVertical, Phone, Plus, RefreshCw, Search,
+  Send, Settings, Share, ShoppingCart, Sparkles, Star, Sun, Trash, Trash2, Upload, User,
+  Users, X, Zap, AlertCircle, AlertTriangle, Bell, Bookmark, Calendar, Camera, CreditCard,
+  Database, Folder, Gift, Globe, Grid, HelpCircle, Inbox, Layers, Layout, List, MapPin,
+  Maximize, Minimize, Monitor, Package, Pause, Play, Power, Printer, Radio, Save, Shield,
+  Smartphone, Speaker, Tag, Target, Terminal, ThumbsUp, ThumbsDown, TrendingUp, TrendingDown,
+  Truck, Tv, Type, Umbrella, Underline, Unlock, Video, Wifi, Wind, Award, BarChart, Briefcase,
+  Building, Code, Coffee, Compass, Cpu, DollarSign, Feather, Flag, Headphones, Key, Lightbulb,
+  Mic, Music, PenTool, Percent, PieChart, Rocket, Scissors, Server, Sliders, Smile, Snowflake,
+  Timer, ToggleLeft, ToggleRight, Trophy, Wrench,
+  // Social icons:
+  Github, Twitter, Linkedin, Facebook, Instagram, Youtube
 
 SHARED STATE (for inter-component communication):
   const [value, setValue] = useSharedState('keyName', defaultValue);

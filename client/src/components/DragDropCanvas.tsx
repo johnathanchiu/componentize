@@ -8,9 +8,49 @@ import { InteractionPanel } from './InteractionPanel';
 import { ConnectionsOverlay, ConnectionsLegend, ConnectionsToggle } from './ConnectionsOverlay';
 import { Resizable } from 're-resizable';
 import type { Size, Interaction } from '../types/index';
-import { useEffect, useState, useRef, useCallback, useMemo, type ComponentType } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo, type ComponentType } from 'react';
 import { loadComponent } from '../lib/componentRenderer';
 import { detectStateConnections } from '../lib/sharedStore';
+
+// Error boundary to catch runtime errors in rendered components
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  onError: (error: Error) => void;
+  resetKey?: number;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ComponentErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    this.props.onError(error);
+  }
+
+  componentDidUpdate(prevProps: ErrorBoundaryProps) {
+    // Reset error state when resetKey changes (component reloaded)
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null; // Error overlay will be shown by parent
+    }
+    return this.props.children;
+  }
+}
 
 interface CanvasItemProps {
   id: string;
@@ -79,9 +119,6 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
   const connectionsCallbackRef = useRef(onConnectionsDetected);
   connectionsCallbackRef.current = onConnectionsDetected;
 
-  // Track last observed size to avoid redundant updates
-  const lastSizeRef = useRef<Size | null>(null);
-
   // Load component when projectId, componentName, or version changes
   useEffect(() => {
     const abortController = new AbortController();
@@ -119,40 +156,26 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
     return () => abortController.abort();
   }, [projectId, componentName, componentVersion]);
 
-  // Measure natural size using ResizeObserver on the actual component
-  // Debounced to avoid rapid re-renders
+  // Measure natural size ONCE when component first loads
+  // We only measure once to avoid feedback loop with scaling
+  const hasInitialMeasurement = useRef(false);
+
   useEffect(() => {
-    if (!Component || !componentRef.current) return;
+    if (!Component || !componentRef.current || hasInitialMeasurement.current) return;
 
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          const newSize = { width: Math.round(width), height: Math.round(height) };
-
-          // Skip if size hasn't actually changed
-          const lastSize = lastSizeRef.current;
-          if (lastSize && lastSize.width === newSize.width && lastSize.height === newSize.height) {
-            return;
-          }
-
-          // Debounce the update
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => {
-            lastSizeRef.current = newSize;
-            setNaturalSize(newSize);
-          }, 50);
-        }
+    // Use requestAnimationFrame to ensure component has rendered
+    const measureNaturalSize = () => {
+      if (!componentRef.current) return;
+      const rect = componentRef.current.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        hasInitialMeasurement.current = true;
+        setNaturalSize({ width: Math.round(rect.width), height: Math.round(rect.height) });
       }
-    });
-
-    observer.observe(componentRef.current);
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      observer.disconnect();
     };
+
+    // Measure after a short delay to ensure content is rendered
+    const timerId = setTimeout(measureNaturalSize, 100);
+    return () => clearTimeout(timerId);
   }, [Component]);
 
   // Set initial box size only when there's no stored size
@@ -188,6 +211,7 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
     top: y,
     transform: transform && !isDragging ? CSS.Transform.toString(transform) : undefined,
   };
+
 
   return (
     <div
@@ -301,21 +325,27 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
         }}
       >
         {/* Direct component rendering - no iframe! */}
-        <div className="w-full h-full flex items-center justify-center overflow-hidden">
+        {/* Only apply overflow-hidden after natural size is measured to avoid clipping during measurement */}
+        <div className={`w-full h-full flex items-center justify-center ${naturalSize ? 'overflow-hidden' : 'overflow-visible'}`}>
           {loading && (
             <div className="text-xs text-neutral-400">Loading...</div>
           )}
           {!loading && Component && (
-            <div
-              ref={componentRef}
-              className="inline-block"
-              style={{
-                transformOrigin: 'center',
-                transform: scale !== 1 ? `scale(${scale})` : undefined,
-              }}
+            <ComponentErrorBoundary
+              onError={(error) => setComponentError({ message: error.message, stack: error.stack })}
+              resetKey={componentVersion}
             >
-              <Component />
-            </div>
+              <div
+                ref={componentRef}
+                className="inline-block"
+                style={{
+                  transformOrigin: 'center',
+                  transform: scale !== 1 ? `scale(${scale})` : undefined,
+                }}
+              >
+                <Component />
+              </div>
+            </ComponentErrorBoundary>
           )}
         </div>
 
