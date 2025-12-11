@@ -144,6 +144,26 @@ ATOMIC COMPONENT RULES:
   ✗ PricingCard (everything combined)
 - Name components descriptively: HeroHeadline, PricingCardPro, EmailSignupForm
 
+CONSISTENCY RULES (IMPORTANT):
+- When creating multiple similar components (e.g., 3 pricing cards, 3 feature cards):
+  1. Use IDENTICAL fixed dimensions with Tailwind: className="w-80 h-96" or similar
+  2. Use the SAME structure - if one card has a Badge, ALL cards should have a Badge slot
+  3. Use the SAME number of content items (e.g., all pricing cards show exactly 4 features)
+  4. Specify the SAME size in plan_components for all similar components
+- Example for consistent cards:
+  <Card className="w-72 h-80">  // Fixed width and height for ALL cards in the group
+    <CardHeader className="h-24">  // Fixed header height
+      {/* Badge slot - use invisible placeholder if not needed */}
+      <Badge className={showBadge ? "" : "invisible"}>Popular</Badge>
+      ...
+    </CardHeader>
+    <CardContent className="h-32">  // Fixed content height
+      ...
+    </CardContent>
+  </Card>
+- For feature cards, testimonial cards, team member cards - ALWAYS use fixed dimensions
+- Never let cards auto-size to content when they appear in a row/grid
+
 POSITIONING:
 - Look at CURRENT CANVAS in the user message to see existing component positions
 - Place new components to avoid overlap with existing ones

@@ -23,7 +23,7 @@ class ProjectService {
    * Get the path to the projects directory inside the workspace
    */
   private getProjectsDir(): string {
-    return path.join(viteDevServerService.getWorkspacePath(), 'src', '.projects');
+    return path.join(viteDevServerService.getWorkspacePath(), 'projects');
   }
 
   /**
