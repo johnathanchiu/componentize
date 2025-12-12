@@ -13,10 +13,11 @@ import { useProjectStore, type Project } from './store/projectStore';
 import { getProject } from './lib/api';
 
 function App() {
-  const { addToCanvas, updatePosition, canvasComponents, clearCanvas, loadCanvas } = useCanvasStore();
+  const { addToCanvas, updatePosition, canvasComponents, clearCanvas, loadCanvas, selectedComponentId, removeFromCanvas } = useCanvasStore();
   const { currentProject, setCurrentProject } = useProjectStore();
   const [activeComponentName, setActiveComponentName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [cmdKeyHeld, setCmdKeyHeld] = useState(false);
   const lastPointerPosition = useRef<{ x: number; y: number } | null>(null);
 
   // Configure sensors with custom activation constraint
@@ -84,6 +85,33 @@ function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  // Track Cmd/Ctrl key state and handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey) setCmdKeyHeld(true);
+
+      // Keyboard shortcuts for selected component
+      if (selectedComponentId) {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          // Don't trigger if user is typing in an input
+          if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+          e.preventDefault();
+          removeFromCanvas(selectedComponentId);
+        }
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!e.metaKey && !e.ctrlKey) setCmdKeyHeld(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [selectedComponentId, removeFromCanvas]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const componentName = event.active.data.current?.componentName;
@@ -200,7 +228,7 @@ function App() {
 
           {/* Canvas area - full height */}
           <div className="flex-1 min-w-0 relative">
-            <DragDropCanvas />
+            <DragDropCanvas cmdKeyHeld={cmdKeyHeld} />
             <PageGenerationOverlay />
           </div>
 

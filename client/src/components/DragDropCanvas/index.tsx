@@ -7,7 +7,11 @@ import { detectStateConnections } from '../../lib/sharedStore';
 import { ConnectionsOverlay, ConnectionsLegend, ConnectionsToggle } from '../ConnectionsOverlay';
 import { CanvasItem } from './CanvasItem';
 
-export function DragDropCanvas() {
+interface DragDropCanvasProps {
+  cmdKeyHeld: boolean;
+}
+
+export function DragDropCanvas({ cmdKeyHeld }: DragDropCanvasProps) {
   const { setNodeRef } = useDroppable({ id: 'canvas' });
 
   const { currentProject } = useProjectStore();
@@ -15,21 +19,16 @@ export function DragDropCanvas() {
     canvasComponents,
     selectedComponentId,
     setSelectedComponentId,
-    removeFromCanvas,
     updateSize,
     stateConnections,
     showConnections,
     addStateConnections,
     removeComponentConnections,
   } = useCanvasStore();
-  const { startFixing, startEditing } = useGenerationStore();
+  const { startFixing, setGenerationMode, setEditingComponentName } = useGenerationStore();
 
   const handleFix = (componentName: string, errorMessage: string, errorStack?: string) => {
     startFixing(componentName, { message: errorMessage, stack: errorStack });
-  };
-
-  const handleEdit = (componentName: string) => {
-    startEditing(componentName);
   };
 
   const createConnectionsCallback = useCallback(
@@ -57,7 +56,11 @@ export function DragDropCanvas() {
           backgroundImage: 'radial-gradient(circle, #D4D4D4 1px, transparent 1px)',
           backgroundSize: '20px 20px',
         }}
-        onClick={() => setSelectedComponentId(null)}
+        onClick={() => {
+          setSelectedComponentId(null);
+          setEditingComponentName(null);
+          setGenerationMode('create');
+        }}
       >
         {canvasComponents.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -78,12 +81,10 @@ export function DragDropCanvas() {
               size={item.size}
               isSelected={selectedComponentId === item.id}
               onSelect={() => setSelectedComponentId(item.id)}
-              onEdit={() => handleEdit(item.componentName)}
-              onDelete={() => removeFromCanvas(item.id)}
               onResize={(width, height) => updateSize(item.id, width, height)}
               onFix={(errorMessage, errorStack) => handleFix(item.componentName, errorMessage, errorStack)}
               onConnectionsDetected={createConnectionsCallback(item.id, item.componentName)}
-              interactions={item.interactions}
+              cmdKeyHeld={cmdKeyHeld}
             />
           ))
         ) : null}

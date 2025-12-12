@@ -1,14 +1,11 @@
 import { useEffect, useState, useRef, useMemo, type ComponentType } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import { CSS } from '@dnd-kit/utilities';
 import { Resizable } from 're-resizable';
 import { useGenerationStore } from '../../store/generationStore';
 import { loadComponent } from '../../lib/componentRenderer';
-import { InteractionPanel } from '../InteractionPanel/index';
 import { ComponentErrorBoundary } from './ErrorBoundary';
-import { CanvasItemToolbar } from './CanvasItemToolbar';
 import { ErrorOverlay } from './ErrorOverlay';
-import type { Size, Interaction } from '../../types/index';
+import type { Size } from '../../types/index';
 
 interface CanvasItemProps {
   id: string;
@@ -19,12 +16,10 @@ interface CanvasItemProps {
   size?: Size;
   isSelected: boolean;
   onSelect: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
   onResize: (width: number, height: number) => void;
   onFix: (errorMessage: string, errorStack?: string) => void;
   onConnectionsDetected: (source: string) => void;
-  interactions?: Interaction[];
+  cmdKeyHeld: boolean;
 }
 
 export function CanvasItem({
@@ -36,14 +31,12 @@ export function CanvasItem({
   size,
   isSelected,
   onSelect,
-  onEdit,
-  onDelete,
   onResize,
   onFix,
   onConnectionsDetected,
-  interactions,
+  cmdKeyHeld,
 }: CanvasItemProps) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `canvas-${id}`,
     data: { id, componentName, source: 'canvas' },
   });
@@ -54,26 +47,16 @@ export function CanvasItem({
   const [loading, setLoading] = useState(true);
   const [resizePreview, setResizePreview] = useState<Size | null>(null);
   const componentRef = useRef<HTMLDivElement>(null);
-  const { isGenerating, generationMode, editingComponentName, componentVersions } = useGenerationStore();
+  const { isGenerating, generationMode, editingComponentName, componentVersions, startEditing } = useGenerationStore();
 
   const componentVersion = componentVersions[componentName] || 0;
   const isBeingFixed = generationMode === 'fix' && editingComponentName === componentName && isGenerating;
 
-  // Compute dynamic control positioning based on component location
-  const controlPosition = useMemo(() => {
-    const TOOLBAR_HEIGHT = 36;
-    const EDGE_THRESHOLD = 50;
-    const nearTop = y < TOOLBAR_HEIGHT + EDGE_THRESHOLD;
-    const nearLeft = x < EDGE_THRESHOLD;
-    const componentWidth = size?.width || 120;
-    const canvasWidth = typeof window !== 'undefined' ? window.innerWidth - 350 : 1000;
-    const nearRight = x + componentWidth > canvasWidth - EDGE_THRESHOLD;
-
-    return {
-      vertical: nearTop ? 'bottom' : 'top',
-      horizontal: nearRight ? 'outsideLeft' : nearLeft ? 'outsideRight' : 'left',
-    } as const;
-  }, [x, y, size?.width]);
+  // Calculate display size
+  const displaySize = useMemo(
+    () => size || naturalSize || { width: 120, height: 40 },
+    [size, naturalSize]
+  );
 
   // Store callback in ref to avoid re-triggering effect
   const connectionsCallbackRef = useRef(onConnectionsDetected);
@@ -140,11 +123,6 @@ export function CanvasItem({
     onFix(componentError.message, componentError.stack);
   };
 
-  const displaySize = useMemo(
-    () => size || naturalSize || { width: 120, height: 40 },
-    [size, naturalSize]
-  );
-
   const activeSize = resizePreview || displaySize;
   const scale = naturalSize && naturalSize.width > 0
     ? activeSize.width / naturalSize.width
@@ -154,7 +132,7 @@ export function CanvasItem({
     position: 'absolute' as const,
     left: x,
     top: y,
-    transform: transform && !isDragging ? CSS.Transform.toString(transform) : undefined,
+    cursor: cmdKeyHeld ? (isDragging ? 'grabbing' : 'grab') : 'default',
   };
 
   return (
@@ -163,20 +141,17 @@ export function CanvasItem({
       ref={setNodeRef}
       style={style}
       className={`group ${isDragging ? 'opacity-50 z-50' : ''}`}
+      {...(cmdKeyHeld ? { ...listeners, ...attributes } : {})}
       onClick={(e) => {
-        e.stopPropagation();
-        onSelect();
+        // Only handle Cmd+click - regular clicks pass through to component children
+        if (e.metaKey || e.ctrlKey) {
+          e.stopPropagation();
+          e.preventDefault();
+          onSelect();
+          startEditing(componentName);
+        }
       }}
     >
-      <CanvasItemToolbar
-        componentName={componentName}
-        controlPosition={controlPosition}
-        onEdit={onEdit}
-        onDelete={onDelete}
-        listeners={listeners}
-        attributes={attributes}
-      />
-
       <Resizable
         size={activeSize}
         onResize={(_e, _direction, _ref, d) => {
@@ -210,7 +185,7 @@ export function CanvasItem({
         }}
         enable={{
           top: false, right: false, bottom: false, left: false,
-          topRight: false, bottomRight: true, bottomLeft: false, topLeft: false,
+          topRight: false, bottomRight: cmdKeyHeld, bottomLeft: false, topLeft: false,
         }}
       >
         <div className={`w-full h-full flex items-center justify-center ${naturalSize ? 'overflow-hidden' : 'overflow-visible'}`}>
@@ -242,28 +217,6 @@ export function CanvasItem({
           />
         )}
       </Resizable>
-
-      {/* Interaction count badge */}
-      {interactions && interactions.length > 0 && (
-        <div
-          className={`absolute px-1.5 py-0.5 bg-neutral-600 text-white text-[9px] rounded shadow-sm pointer-events-none z-20 ${
-            controlPosition.vertical === 'bottom' ? '-top-5' : '-bottom-5'
-          } ${
-            controlPosition.horizontal === 'outsideLeft' ? 'right-0' :
-            controlPosition.horizontal === 'outsideRight' ? 'left-0' : 'left-0'
-          }`}
-        >
-          {interactions.length} interaction{interactions.length !== 1 ? 's' : ''}
-        </div>
-      )}
-
-      {isSelected && (
-        <InteractionPanel
-          componentId={id}
-          componentName={componentName}
-          interactions={interactions}
-        />
-      )}
     </div>
   );
 }
