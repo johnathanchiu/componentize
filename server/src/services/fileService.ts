@@ -20,6 +20,15 @@ export class FileService {
   }
 
   /**
+   * Get the base path for components - either global or project-scoped
+   */
+  private getComponentsBasePath(projectId?: string): string {
+    return projectId
+      ? projectService.getProjectDir(projectId)
+      : this.componentsPath;
+  }
+
+  /**
    * Validate component name (PascalCase, starts with uppercase)
    */
   private validateComponentName(name: string): { valid: boolean; error?: string } {
@@ -65,35 +74,31 @@ export class FileService {
   }
 
   /**
-   * Create a new component file
+   * Create a new component file (global or project-scoped)
    */
-  async createComponent(name: string, code: string): Promise<ComponentResponse> {
+  async createComponent(name: string, code: string, projectId?: string): Promise<ComponentResponse> {
     // Validate name
     const nameValidation = this.validateComponentName(name);
     if (!nameValidation.valid) {
-      return {
-        status: 'error',
-        message: nameValidation.error!
-      };
+      return { status: 'error', message: nameValidation.error! };
     }
 
     // Validate code
     const codeValidation = this.validateComponentCode(code);
     if (!codeValidation.valid) {
-      return {
-        status: 'error',
-        message: codeValidation.error!
-      };
+      return { status: 'error', message: codeValidation.error! };
     }
 
-    const filepath = path.join(this.componentsPath, `${name}.tsx`);
+    const basePath = this.getComponentsBasePath(projectId);
+    const filepath = path.join(basePath, `${name}.tsx`);
 
     // Check if component already exists
     try {
       await fs.access(filepath);
+      const location = projectId ? 'in this project' : '';
       return {
         status: 'error',
-        message: `Component '${name}' already exists. Use update instead.`
+        message: `Component '${name}' already exists${location ? ' ' + location : ''}. Use update instead.`
       };
     } catch {
       // File doesn't exist, proceed with creation
@@ -102,7 +107,6 @@ export class FileService {
     // Write component file
     try {
       await fs.writeFile(filepath, code, 'utf-8');
-
       return {
         status: 'success',
         message: `Component '${name}' created successfully`,
@@ -119,34 +123,32 @@ export class FileService {
   }
 
   /**
-   * Update an existing component file
+   * Update an existing component file (global or project-scoped)
    */
-  async updateComponent(name: string, code: string): Promise<ComponentResponse> {
+  async updateComponent(name: string, code: string, projectId?: string): Promise<ComponentResponse> {
     // Validate code
     const codeValidation = this.validateComponentCode(code);
     if (!codeValidation.valid) {
-      return {
-        status: 'error',
-        message: codeValidation.error!
-      };
+      return { status: 'error', message: codeValidation.error! };
     }
 
-    const filepath = path.join(this.componentsPath, `${name}.tsx`);
+    const basePath = this.getComponentsBasePath(projectId);
+    const filepath = path.join(basePath, `${name}.tsx`);
 
     // Check if component exists
     try {
       await fs.access(filepath);
     } catch {
+      const location = projectId ? 'in this project' : '';
       return {
         status: 'error',
-        message: `Component '${name}' not found. Use create instead.`
+        message: `Component '${name}' not found${location ? ' ' + location : ''}. Use create instead.`
       };
     }
 
     // Write updated component
     try {
       await fs.writeFile(filepath, code, 'utf-8');
-
       return {
         status: 'success',
         message: `Component '${name}' updated successfully`,
@@ -163,14 +165,14 @@ export class FileService {
   }
 
   /**
-   * Read a component file
+   * Read a component file (global or project-scoped)
    */
-  async readComponent(name: string): Promise<ComponentResponse> {
-    const filepath = path.join(this.componentsPath, `${name}.tsx`);
+  async readComponent(name: string, projectId?: string): Promise<ComponentResponse> {
+    const basePath = this.getComponentsBasePath(projectId);
+    const filepath = path.join(basePath, `${name}.tsx`);
 
     try {
       const content = await fs.readFile(filepath, 'utf-8');
-
       return {
         status: 'success',
         message: `Component '${name}' read successfully`,
@@ -178,25 +180,28 @@ export class FileService {
         filepath,
         content
       };
-    } catch (error) {
+    } catch {
+      const location = projectId ? ' in this project' : '';
       return {
         status: 'error',
-        message: `Component '${name}' not found`
+        message: `Component '${name}' not found${location}`
       };
     }
   }
 
   /**
-   * List all components
+   * List all components (global or project-scoped)
    */
-  async listComponents(): Promise<ListComponentsResponse> {
+  async listComponents(projectId?: string): Promise<ListComponentsResponse> {
+    const basePath = this.getComponentsBasePath(projectId);
+
     try {
-      const files = await fs.readdir(this.componentsPath);
+      const files = await fs.readdir(basePath);
       const tsxFiles = files.filter(file => file.endsWith('.tsx'));
 
       const components: Component[] = tsxFiles.map(file => ({
         name: path.basename(file, '.tsx'),
-        filepath: path.join(this.componentsPath, file)
+        filepath: path.join(basePath, file)
       }));
 
       return {
@@ -205,22 +210,24 @@ export class FileService {
         components
       };
     } catch (error) {
+      // Return error instead of silently returning empty array
       return {
         status: 'error',
-        message: `Failed to list components: ${error instanceof Error ? error.message : 'Unknown error'}`
+        message: `Failed to list components: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        components: []
       };
     }
   }
 
   /**
-   * Delete a component file
+   * Delete a component file (global or project-scoped)
    */
-  async deleteComponent(name: string): Promise<ComponentResponse> {
-    const filepath = path.join(this.componentsPath, `${name}.tsx`);
+  async deleteComponent(name: string, projectId?: string): Promise<ComponentResponse> {
+    const basePath = this.getComponentsBasePath(projectId);
+    const filepath = path.join(basePath, `${name}.tsx`);
 
     try {
       await fs.unlink(filepath);
-
       return {
         status: 'success',
         message: `Component '${name}' deleted successfully`,
@@ -240,17 +247,13 @@ export class FileService {
   async createPage(name: string, code: string): Promise<ComponentResponse> {
     const nameValidation = this.validateComponentName(name);
     if (!nameValidation.valid) {
-      return {
-        status: 'error',
-        message: nameValidation.error!
-      };
+      return { status: 'error', message: nameValidation.error! };
     }
 
     const filepath = path.join(this.pagesPath, `${name}.tsx`);
 
     try {
       await fs.writeFile(filepath, code, 'utf-8');
-
       return {
         status: 'success',
         message: `Page '${name}' created successfully`,
@@ -267,184 +270,28 @@ export class FileService {
   }
 
   // ============================================
-  // Project-scoped component methods
+  // Legacy aliases for backwards compatibility
+  // TODO: Remove these after updating all callers
   // ============================================
 
-  /**
-   * Create a component within a project
-   */
   async createProjectComponent(projectId: string, name: string, code: string): Promise<ComponentResponse> {
-    // Validate name
-    const nameValidation = this.validateComponentName(name);
-    if (!nameValidation.valid) {
-      return {
-        status: 'error',
-        message: nameValidation.error!
-      };
-    }
-
-    // Validate code
-    const codeValidation = this.validateComponentCode(code);
-    if (!codeValidation.valid) {
-      return {
-        status: 'error',
-        message: codeValidation.error!
-      };
-    }
-
-    const projectDir = projectService.getProjectDir(projectId);
-    const filepath = path.join(projectDir, `${name}.tsx`);
-
-    // Check if component already exists
-    try {
-      await fs.access(filepath);
-      return {
-        status: 'error',
-        message: `Component '${name}' already exists in this project. Use update instead.`
-      };
-    } catch {
-      // File doesn't exist, proceed with creation
-    }
-
-    // Write component file
-    try {
-      await fs.writeFile(filepath, code, 'utf-8');
-
-      return {
-        status: 'success',
-        message: `Component '${name}' created successfully`,
-        component_name: name,
-        filepath,
-        content: code
-      };
-    } catch (error) {
-      return {
-        status: 'error',
-        message: `Failed to create component: ${error instanceof Error ? error.message : 'Unknown error'}`
-      };
-    }
+    return this.createComponent(name, code, projectId);
   }
 
-  /**
-   * Update a component within a project
-   */
   async updateProjectComponent(projectId: string, name: string, code: string): Promise<ComponentResponse> {
-    // Validate code
-    const codeValidation = this.validateComponentCode(code);
-    if (!codeValidation.valid) {
-      return {
-        status: 'error',
-        message: codeValidation.error!
-      };
-    }
-
-    const projectDir = projectService.getProjectDir(projectId);
-    const filepath = path.join(projectDir, `${name}.tsx`);
-
-    // Check if component exists
-    try {
-      await fs.access(filepath);
-    } catch {
-      return {
-        status: 'error',
-        message: `Component '${name}' not found in this project. Use create instead.`
-      };
-    }
-
-    // Write updated component
-    try {
-      await fs.writeFile(filepath, code, 'utf-8');
-
-      return {
-        status: 'success',
-        message: `Component '${name}' updated successfully`,
-        component_name: name,
-        filepath,
-        content: code
-      };
-    } catch (error) {
-      return {
-        status: 'error',
-        message: `Failed to update component: ${error instanceof Error ? error.message : 'Unknown error'}`
-      };
-    }
+    return this.updateComponent(name, code, projectId);
   }
 
-  /**
-   * Read a component from a project
-   */
   async readProjectComponent(projectId: string, name: string): Promise<ComponentResponse> {
-    const projectDir = projectService.getProjectDir(projectId);
-    const filepath = path.join(projectDir, `${name}.tsx`);
-
-    try {
-      const content = await fs.readFile(filepath, 'utf-8');
-
-      return {
-        status: 'success',
-        message: `Component '${name}' read successfully`,
-        component_name: name,
-        filepath,
-        content
-      };
-    } catch {
-      return {
-        status: 'error',
-        message: `Component '${name}' not found in this project`
-      };
-    }
+    return this.readComponent(name, projectId);
   }
 
-  /**
-   * List all components in a project
-   */
   async listProjectComponents(projectId: string): Promise<ListComponentsResponse> {
-    const projectDir = projectService.getProjectDir(projectId);
-
-    try {
-      const files = await fs.readdir(projectDir);
-      const tsxFiles = files.filter(file => file.endsWith('.tsx'));
-
-      const components: Component[] = tsxFiles.map(file => ({
-        name: path.basename(file, '.tsx'),
-        filepath: path.join(projectDir, file)
-      }));
-
-      return {
-        status: 'success',
-        message: `Found ${components.length} component(s)`,
-        components
-      };
-    } catch {
-      return {
-        status: 'success',
-        message: 'Found 0 component(s)',
-        components: []
-      };
-    }
+    return this.listComponents(projectId);
   }
 
-  /**
-   * Delete a component from a project
-   */
   async deleteProjectComponent(projectId: string, name: string): Promise<ComponentResponse> {
-    const projectDir = projectService.getProjectDir(projectId);
-    const filepath = path.join(projectDir, `${name}.tsx`);
-
-    try {
-      await fs.unlink(filepath);
-
-      return {
-        status: 'success',
-        message: `Component '${name}' deleted successfully`,
-        component_name: name
-      };
-    } catch (error) {
-      return {
-        status: 'error',
-        message: `Failed to delete component '${name}': ${error instanceof Error ? error.message : 'Unknown error'}`
-      };
-    }
+    return this.deleteComponent(name, projectId);
   }
 }
 

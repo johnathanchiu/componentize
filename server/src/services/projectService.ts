@@ -105,7 +105,10 @@ class ProjectService {
       return projects.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
-    } catch {
+    } catch (error) {
+      // Log error instead of silently returning empty
+      // TODO: Consider returning a response wrapper with error status
+      console.error('Failed to list projects:', error);
       return [];
     }
   }
