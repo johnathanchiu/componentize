@@ -1,6 +1,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import { Trash2, AlertCircle, Wrench, Pencil, GripHorizontal } from 'lucide-react';
 import { useCanvasStore } from '../store/canvasStore';
+import { useGenerationStore } from '../store/generationStore';
 import { useProjectStore } from '../store/projectStore';
 import { CSS } from '@dnd-kit/utilities';
 import { useDraggable } from '@dnd-kit/core';
@@ -81,7 +82,7 @@ function CanvasItem({ id, componentName, projectId, x, y, size, isSelected, onSe
   const [loading, setLoading] = useState(true);
   const [resizePreview, setResizePreview] = useState<Size | null>(null);
   const componentRef = useRef<HTMLDivElement>(null);
-  const { isGenerating, generationMode, editingComponentName, componentVersions } = useCanvasStore();
+  const { isGenerating, generationMode, editingComponentName, componentVersions } = useGenerationStore();
 
   // Get version for this component (used to reload on changes)
   const componentVersion = componentVersions[componentName] || 0;
@@ -413,13 +414,12 @@ export function DragDropCanvas() {
     setSelectedComponentId,
     removeFromCanvas,
     updateSize,
-    startFixing,
-    startEditing,
     stateConnections,
     showConnections,
     addStateConnections,
     removeComponentConnections,
   } = useCanvasStore();
+  const { startFixing, startEditing } = useGenerationStore();
 
   // Handler to start fixing a component with an error - auto-triggers fix
   const handleFix = (componentName: string, errorMessage: string, errorStack?: string) => {

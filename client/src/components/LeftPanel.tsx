@@ -3,6 +3,8 @@ import { Wand2, Loader2, X, Pencil, Wrench, RefreshCw, Trash2 } from 'lucide-rea
 import { useDraggable } from '@dnd-kit/core';
 import { generateStream, editProjectComponentStream, listProjectComponents, deleteProjectComponent } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
+import { useGenerationStore } from '../store/generationStore';
+import { useComponentLibraryStore } from '../store/componentLibraryStore';
 import { useProjectStore } from '../store/projectStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ResizeHandle } from './ResizeHandle';
@@ -21,11 +23,11 @@ function CreateTab() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const { currentProject } = useProjectStore();
+  const { addToCanvas } = useCanvasStore();
+  const { addAvailableComponent } = useComponentLibraryStore();
   const {
     isGenerating,
     setIsGenerating,
-    addAvailableComponent,
-    addToCanvas,
     streamingEvents,
     streamStatus,
     isStreamPanelExpanded,
@@ -42,7 +44,7 @@ function CreateTab() {
     setEditingComponentName,
     setPendingFixError,
     incrementComponentVersion,
-  } = useCanvasStore();
+  } = useGenerationStore();
 
   // Reset form when switching modes
   useEffect(() => {
@@ -352,7 +354,7 @@ function DraggableComponentCard({ name, projectId, onDelete }: { name: string; p
     id: `library-${name}`,
     data: { componentName: name, source: 'library' },
   });
-  const { componentVersions } = useCanvasStore();
+  const { componentVersions } = useGenerationStore();
   const componentVersion = componentVersions[name] || 0;
   const [Component, setComponent] = useState<ComponentType | null>(null);
   const [naturalSize, setNaturalSize] = useState<Size | null>(null);
@@ -453,7 +455,7 @@ function DraggableComponentCard({ name, projectId, onDelete }: { name: string; p
 }
 
 function LibraryTab() {
-  const { availableComponents, setAvailableComponents, removeAvailableComponent } = useCanvasStore();
+  const { availableComponents, setAvailableComponents, removeAvailableComponent } = useComponentLibraryStore();
   const { currentProject } = useProjectStore();
 
   const loadComponents = async () => {
@@ -540,7 +542,7 @@ function LibraryTab() {
 
 export function LeftPanel() {
   const [activeTab, setActiveTab] = useState<'create' | 'library'>('library');
-  const { generationMode } = useCanvasStore();
+  const { generationMode } = useGenerationStore();
 
   const { panelSize, isResizing, handleMouseDown } = useResizablePanel({
     storageKey: 'left-panel-width',
