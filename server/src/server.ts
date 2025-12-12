@@ -56,25 +56,6 @@ server.get('/api/health', async () => {
 });
 
 // ============================================================================
-// Legacy Component Endpoints (kept for backwards compatibility)
-// ============================================================================
-
-/**
- * Get component code (legacy - non-project scoped)
- */
-server.get<{ Params: { componentName: string } }>('/api/get-component-code/:componentName', async (request) => {
-  const { componentName } = request.params;
-  return await fileService.readComponent(componentName);
-});
-
-/**
- * List all components (legacy - non-project scoped)
- */
-server.get('/api/list-components', async () => {
-  return await fileService.listComponents();
-});
-
-// ============================================================================
 // Interaction Endpoints (Streaming)
 // ============================================================================
 

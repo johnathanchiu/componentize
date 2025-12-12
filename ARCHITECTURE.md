@@ -37,8 +37,16 @@ componentize/
 │   └── src/
 │       ├── components/        # UI components
 │       │   ├── LeftPanel.tsx      # Create form + component library
-│       │   ├── DragDropCanvas.tsx # Canvas with draggable items
-│       │   ├── InteractionPanel.tsx
+│       │   ├── DragDropCanvas/    # Canvas with draggable items
+│       │   │   ├── index.tsx          # Main canvas component
+│       │   │   ├── CanvasItem.tsx     # Individual canvas item
+│       │   │   ├── CanvasItemToolbar.tsx
+│       │   │   └── ErrorOverlay.tsx
+│       │   ├── InteractionPanel/  # Component interaction controls
+│       │   │   ├── index.tsx
+│       │   │   ├── AddInteractionForm.tsx
+│       │   │   ├── EditComponentForm.tsx
+│       │   │   └── ViewCodeSection.tsx
 │       │   └── ...
 │       ├── store/             # Zustand state management
 │       │   ├── canvasStore.ts         # Canvas items, positions, connections
