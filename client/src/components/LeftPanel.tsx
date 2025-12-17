@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, type ComponentType } from 'react';
 import { Wand2, Loader2, X, Pencil, Wrench, RefreshCw, Trash2 } from 'lucide-react';
-import { useDraggable } from '@dnd-kit/core';
 import { generateStream, editProjectComponentStream, listProjectComponents, deleteProjectComponent } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
 import { useGenerationStore } from '../store/generationStore';
@@ -350,10 +349,7 @@ Call read_component to see the code, find the bug, and call update_component wit
 // ============================================
 
 function DraggableComponentCard({ name, projectId, onDelete }: { name: string; projectId: string; onDelete: () => void }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `library-${name}`,
-    data: { componentName: name, source: 'library' },
-  });
+  const [isDragging, setIsDragging] = useState(false);
   const { componentVersions } = useGenerationStore();
   const componentVersion = componentVersions[name] || 0;
   const [Component, setComponent] = useState<ComponentType | null>(null);
@@ -402,11 +398,31 @@ function DraggableComponentCard({ name, projectId, onDelete }: { name: string; p
     1 // don't scale up
   ) : 1;
 
+  // Native drag handlers for React Flow compatibility
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData('application/componentName', name);
+    e.dataTransfer.effectAllowed = 'move';
+
+    // Create custom drag image that follows cursor
+    const dragImage = document.createElement('div');
+    dragImage.textContent = name;
+    dragImage.style.cssText = 'padding: 8px 16px; background: white; border: 2px solid #171717; border-radius: 8px; font-size: 14px; font-weight: 500; position: absolute; top: -1000px; left: -1000px;';
+    document.body.appendChild(dragImage);
+    e.dataTransfer.setDragImage(dragImage, dragImage.offsetWidth / 2, dragImage.offsetHeight / 2);
+    setTimeout(() => document.body.removeChild(dragImage), 0);
+
+    setIsDragging(true);
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
   return (
     <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       className={`group/card relative rounded-lg border border-neutral-200 overflow-hidden cursor-grab active:cursor-grabbing hover:border-neutral-300 transition-colors ${isDragging ? 'opacity-50' : ''
         }`}
     >
@@ -569,7 +585,6 @@ export function LeftPanel() {
       <div className="flex border-b border-neutral-200">
         <button
           onClick={() => setActiveTab('create')}
-          onMouseEnter={() => setActiveTab('create')}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'create'
             ? 'text-neutral-900 border-b-2 border-neutral-900'
             : 'text-neutral-500 hover:text-neutral-700'
@@ -579,7 +594,6 @@ export function LeftPanel() {
         </button>
         <button
           onClick={() => setActiveTab('library')}
-          onMouseEnter={() => setActiveTab('library')}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'library'
             ? 'text-neutral-900 border-b-2 border-neutral-900'
             : 'text-neutral-500 hover:text-neutral-700'

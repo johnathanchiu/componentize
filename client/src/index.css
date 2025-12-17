@@ -67,3 +67,25 @@ body {
 .resize-handle-corner.resize-handle-bottomRight {
   cursor: nwse-resize;
 }
+
+/* Make React Flow component nodes transparent */
+.react-flow__node-component {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* Drag preview node for library-to-canvas drag */
+.react-flow__node.drag-preview-node,
+.react-flow__node-default.drag-preview-node {
+  background: white;
+  border: 2px dashed #a3a3a3;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 12px;
+  color: #737373;
+  pointer-events: none;
+  opacity: 0.9;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
