@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { CanvasComponent, Interaction } from '../types/index';
+import type { CanvasComponent, Interaction, CanvasLayout } from '../types/index';
 import { getProjectCanvas, saveProjectCanvas } from '../lib/api';
 import type { StateConnection } from '../lib/sharedStore';
 
@@ -25,20 +25,30 @@ interface CanvasStore {
   currentProjectId: string | null;
   setCurrentProjectId: (id: string | null) => void;
 
-  // Canvas items
+  // Canvas items (components)
   canvasComponents: CanvasComponent[];
   isLoadingCanvas: boolean;
   canvasLoadError: string | null;
   addToCanvas: (component: CanvasComponent) => void;
   updatePosition: (id: string, x: number, y: number) => void;
   updateSize: (id: string, width: number, height: number, x?: number, y?: number) => void;
+  updateNaturalSize: (id: string, width: number, height: number) => void;
   removeFromCanvas: (id: string) => void;
   clearCanvas: () => void;
   loadCanvas: (projectId: string) => Promise<void>;
 
-  // Selection
+  // Canvas layouts
+  canvasLayouts: CanvasLayout[];
+  addLayout: (layout: CanvasLayout) => void;
+  updateLayoutPosition: (id: string, x: number, y: number) => void;
+  updateLayoutSize: (id: string, width: number, height: number) => void;
+  removeLayout: (id: string) => void;
+
+  // Selection (can be component or layout)
   selectedComponentId: string | null;
+  selectedLayoutId: string | null;
   setSelectedComponentId: (id: string | null) => void;
+  setSelectedLayoutId: (id: string | null) => void;
 
   // Interactions
   addInteraction: (componentId: string, interaction: Interaction) => void;
@@ -128,6 +138,21 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
       return { canvasComponents: newComponents };
     }),
 
+  updateNaturalSize: (id, width, height) =>
+    set((state) => {
+      const newComponents = state.canvasComponents.map((comp) => {
+        if (comp.id === id) {
+          // Update naturalSize (allows dynamic content changes to update node bounds)
+          return { ...comp, naturalSize: { width, height } };
+        }
+        return comp;
+      });
+      if (state.currentProjectId) {
+        debouncedSave(state.currentProjectId, newComponents);
+      }
+      return { canvasComponents: newComponents };
+    }),
+
   removeFromCanvas: (id) =>
     set((state) => {
       const newComponents = state.canvasComponents.filter((comp) => comp.id !== id);
@@ -142,11 +167,45 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
       };
     }),
 
-  clearCanvas: () => set({ canvasComponents: [] }),
+  clearCanvas: () => set({ canvasComponents: [], canvasLayouts: [] }),
+
+  // Canvas layouts
+  canvasLayouts: [],
+
+  addLayout: (layout) =>
+    set((state) => {
+      const newLayouts = [...state.canvasLayouts, layout];
+      // TODO: Add debounced save for layouts when we have full canvas state persistence
+      return { canvasLayouts: newLayouts };
+    }),
+
+  updateLayoutPosition: (id, x, y) =>
+    set((state) => {
+      const newLayouts = state.canvasLayouts.map((layout) =>
+        layout.id === id ? { ...layout, position: { x, y } } : layout
+      );
+      return { canvasLayouts: newLayouts };
+    }),
+
+  updateLayoutSize: (id, width, height) =>
+    set((state) => {
+      const newLayouts = state.canvasLayouts.map((layout) =>
+        layout.id === id ? { ...layout, size: { width, height } } : layout
+      );
+      return { canvasLayouts: newLayouts };
+    }),
+
+  removeLayout: (id) =>
+    set((state) => ({
+      canvasLayouts: state.canvasLayouts.filter((layout) => layout.id !== id),
+      selectedLayoutId: state.selectedLayoutId === id ? null : state.selectedLayoutId,
+    })),
 
   // Selection
   selectedComponentId: null,
-  setSelectedComponentId: (id) => set({ selectedComponentId: id }),
+  selectedLayoutId: null,
+  setSelectedComponentId: (id) => set({ selectedComponentId: id, selectedLayoutId: null }),
+  setSelectedLayoutId: (id) => set({ selectedLayoutId: id, selectedComponentId: null }),
 
   // Interactions
   addInteraction: (componentId, interaction) =>

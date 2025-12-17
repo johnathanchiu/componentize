@@ -7,7 +7,8 @@ export interface CanvasComponent {
   id: string;
   componentName: string;
   position: Position;
-  size?: Size;
+  size?: Size;           // Target size (user-resized container)
+  naturalSize?: Size;    // Reference size (captured once, used for scaling)
   interactions?: Interaction[];
 }
 
@@ -32,6 +33,72 @@ export interface Size {
 
 export interface PageLayout {
   components: CanvasComponent[];
+}
+
+// ============================================================================
+// Layout DSL Types
+// ============================================================================
+
+export type LayoutPrimitiveType = 'Stack' | 'Flex' | 'Grid' | 'Container';
+
+// Props for each layout primitive
+export interface StackLayoutProps {
+  direction?: 'vertical' | 'horizontal';
+  gap?: number;
+  align?: 'start' | 'center' | 'end' | 'stretch';
+  justify?: 'start' | 'center' | 'end' | 'between' | 'around';
+  padding?: number;
+  className?: string;
+}
+
+export interface FlexLayoutProps {
+  direction?: 'row' | 'column' | 'row-reverse' | 'column-reverse';
+  wrap?: boolean | 'reverse';
+  gap?: number;
+  align?: 'start' | 'center' | 'end' | 'stretch' | 'baseline';
+  justify?: 'start' | 'center' | 'end' | 'between' | 'around' | 'evenly';
+  padding?: number;
+  className?: string;
+}
+
+export interface GridLayoutProps {
+  columns?: number | string;
+  rows?: number | string;
+  gap?: number;
+  align?: 'start' | 'center' | 'end' | 'stretch';
+  justify?: 'start' | 'center' | 'end' | 'stretch';
+  padding?: number;
+  className?: string;
+}
+
+export interface ContainerLayoutProps {
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
+  center?: boolean;
+  padding?: number;
+  className?: string;
+}
+
+export type LayoutProps = StackLayoutProps | FlexLayoutProps | GridLayoutProps | ContainerLayoutProps;
+
+// A child in a layout can be either a component reference or a nested layout
+export type LayoutChild =
+  | { component: string; props?: Record<string, unknown> }
+  | LayoutDefinition;
+
+// Layout definition (stored in layouts/{name}.json)
+export interface LayoutDefinition {
+  name?: string;
+  type: LayoutPrimitiveType;
+  props?: LayoutProps;
+  children: LayoutChild[];
+}
+
+// Canvas layout item (what's stored in canvas.json)
+export interface CanvasLayout {
+  id: string;
+  layoutName: string;
+  position: Position;
+  size?: Size;
 }
 
 export interface APIResponse {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, Check, AlertCircle } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { usePageGenerationStore } from '../../store/pageGenerationStore';
+import { useGenerationStore } from '../../store/generationStore';
 
 function TypewriterText({ text }: { text: string }) {
   const [displayed, setDisplayed] = useState('');
@@ -70,15 +70,15 @@ function ComponentSlot({ name, status, position, size }: ComponentSlotProps) {
 
 export function PageGenerationOverlay() {
   const {
-    status,
-    plan,
-    currentComponentIndex,
-    totalComponents,
-    completedComponents,
-    failedComponents,
-    currentThinking,
-    reset,
-  } = usePageGenerationStore();
+    pageStatus: status,
+    pagePlan: plan,
+    pageCurrentComponentIndex: currentComponentIndex,
+    pageTotalComponents: totalComponents,
+    pageCompletedComponents: completedComponents,
+    pageFailedComponents: failedComponents,
+    pageCurrentThinking: currentThinking,
+    pageReset: reset,
+  } = useGenerationStore();
 
   const hasTriggeredConfetti = useRef(false);
 

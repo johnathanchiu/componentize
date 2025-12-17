@@ -1,14 +1,14 @@
 import { Sparkles } from 'lucide-react';
-import { usePageGenerationStore } from '../../store/pageGenerationStore';
+import { useGenerationStore } from '../../store/generationStore';
 
 export function GeneratePageButton() {
-  const { openModal, status } = usePageGenerationStore();
+  const { pageOpenModal, pageStatus } = useGenerationStore();
 
-  const isGenerating = status === 'planning' || status === 'generating';
+  const isGenerating = pageStatus === 'planning' || pageStatus === 'generating';
 
   return (
     <button
-      onClick={openModal}
+      onClick={pageOpenModal}
       disabled={isGenerating}
       className="relative overflow-hidden group px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:from-neutral-500 disabled:to-neutral-500 text-white rounded-lg font-medium transition-all"
     >

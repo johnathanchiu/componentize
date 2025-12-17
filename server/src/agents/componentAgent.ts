@@ -2,7 +2,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { BaseAgent, type Tool, type ToolResult } from './baseAgent';
 import { fileService } from '../services/fileService';
 import { projectService } from '../services/projectService';
-import type { StreamEvent, CanvasComponent, ComponentPlan } from '../../../shared/types';
+import { validateComponent } from './componentValidator';
+import type { StreamEvent, CanvasComponent, ComponentPlan, Interaction, StateVariable, InteractionType, LayoutDefinition, CanvasLayout, LayoutChild } from '../../../shared/types';
 
 // Default position when not specified by agent
 const DEFAULT_POSITION = { x: 400, y: 300 };
@@ -119,6 +120,117 @@ const COMPONENT_TOOLS: Tool[] = [
       },
       required: ['name', 'code']
     }
+  },
+  {
+    name: 'create_interaction',
+    description: 'Create an interaction/event handler for a component with generated code and state.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        handlerName: {
+          type: 'string',
+          description: 'Name of the event handler function (e.g., handleClick, handleSubmit)'
+        },
+        code: {
+          type: 'string',
+          description: 'The complete event handler code'
+        },
+        state: {
+          type: 'array',
+          description: 'State variables needed for this interaction',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              initialValue: { type: ['string', 'number', 'boolean'] },
+              type: { type: 'string' }
+            },
+            required: ['name', 'initialValue', 'type']
+          }
+        }
+      },
+      required: ['handlerName', 'code']
+    }
+  },
+  {
+    name: 'create_layout',
+    description: 'Compose multiple components using layout primitives (Stack, Flex, Grid, Container). Use this when components need to be arranged together (e.g., 3 cards in a row, hero with stacked content). Components must be created first before adding them to a layout.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Layout name in PascalCase (e.g., PricingSection, HeroArea)'
+        },
+        layout: {
+          type: 'object',
+          description: 'Layout definition using primitives',
+          properties: {
+            type: {
+              type: 'string',
+              enum: ['Stack', 'Flex', 'Grid', 'Container'],
+              description: 'The layout primitive to use'
+            },
+            props: {
+              type: 'object',
+              description: 'Props for the layout primitive (gap, align, justify, direction, etc.)'
+            },
+            children: {
+              type: 'array',
+              description: 'Child elements - component references or nested layouts',
+              items: {
+                type: 'object'
+              }
+            }
+          },
+          required: ['type', 'children']
+        },
+        position: {
+          type: 'object',
+          description: 'Position on canvas for the layout',
+          properties: {
+            x: { type: 'number' },
+            y: { type: 'number' }
+          }
+        },
+        size: {
+          type: 'object',
+          description: 'Size of the layout container',
+          properties: {
+            width: { type: 'number' },
+            height: { type: 'number' }
+          }
+        }
+      },
+      required: ['name', 'layout']
+    }
+  },
+  {
+    name: 'manage_todos',
+    description: 'Manage your task list. Use this to plan work, track progress, and show users what you are doing. Call this BEFORE starting work to create tasks, and after completing each task to mark it done.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        todos: {
+          type: 'array',
+          description: 'The complete updated todo list',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Unique ID for the todo (e.g., "task-1")' },
+              content: { type: 'string', description: 'Task description' },
+              status: {
+                type: 'string',
+                enum: ['pending', 'in_progress', 'completed'],
+                description: 'Task status'
+              }
+            },
+            required: ['id', 'content', 'status']
+          }
+        }
+      },
+      required: ['todos']
+    }
   }
 ];
 
@@ -174,6 +286,50 @@ POSITIONING:
   - Main content in middle (y: 300-500)
   - Footer at bottom (y: 600+)
 
+LAYOUT COMPOSITION:
+When creating related components that should be arranged together (cards in row, hero sections, etc.):
+
+WRONG: Create 3 cards and manually position at x: 100, 400, 700
+RIGHT: Create 3 cards first, then use create_layout to compose them
+
+Example flow for pricing cards:
+1. create_component PricingCardBasic
+2. create_component PricingCardPro
+3. create_component PricingCardEnterprise
+4. create_layout PricingSection with Flex to arrange them in a row
+
+Layout primitives:
+- Stack: Vertical or horizontal stacking with gap. Props: direction, gap, align, justify
+- Flex: Explicit flexbox control. Props: direction, wrap, gap, align, justify
+- Grid: CSS Grid for complex layouts. Props: columns, rows, gap
+- Container: Width constraints and centering. Props: maxWidth, center, padding
+
+Example create_layout call:
+{
+  "name": "PricingSection",
+  "layout": {
+    "type": "Flex",
+    "props": { "gap": 6, "justify": "center", "wrap": true },
+    "children": [
+      { "component": "PricingCardBasic" },
+      { "component": "PricingCardPro" },
+      { "component": "PricingCardEnterprise" }
+    ]
+  },
+  "position": { "x": 100, "y": 300 }
+}
+
+WHEN TO USE LAYOUTS:
+- Multiple cards in a row (pricing, features, testimonials)
+- Hero with stacked headline + subtext + CTA
+- Form with label-input pairs
+- Header with logo + nav + actions
+- Any group of components that should stay together
+
+WHEN NOT TO USE LAYOUTS:
+- Single standalone component
+- Components that user wants to position independently
+
 CODE REQUIREMENTS:
 - TypeScript with proper types (no 'any' unless necessary)
 - Tailwind CSS for all styling (no inline styles, no CSS files)
@@ -204,7 +360,7 @@ LUCIDE ICONS AVAILABLE:
   Send, Settings, Share, ShoppingCart, Sparkles, Star, Sun, Trash, Trash2, Upload, User,
   Users, X, Zap, AlertCircle, AlertTriangle, Bell, Bookmark, Calendar, Camera, CreditCard,
   Database, Folder, Gift, Globe, Grid, HelpCircle, Inbox, Layers, Layout, List, MapPin,
-  Maximize, Minimize, Monitor, Package, Pause, Play, Power, Printer, Radio, Save, Shield,
+  Maximize, Minimize, Monitor, Package, Pause, Play, Power, Printer, Quote, Radio, Save, Shield,
   Smartphone, Speaker, Tag, Target, Terminal, ThumbsUp, ThumbsDown, TrendingUp, TrendingDown,
   Truck, Tv, Type, Umbrella, Underline, Unlock, Video, Wifi, Wind, Award, BarChart, Briefcase,
   Building, Code, Coffee, Compass, Cpu, DollarSign, Feather, Flag, Headphones, Key, Lightbulb,
@@ -222,6 +378,20 @@ Example: FilterPanel and ProductGrid sharing filters
 
   // In ProductGrid
   const [filters] = useSharedState('filters', {});
+
+TASK TRACKING:
+- For multi-component requests: call BOTH plan_components AND manage_todos
+  1. First call plan_components to register what you'll create
+  2. Then call manage_todos to show the user your task list
+  3. Create each component, updating manage_todos after each
+- For simple single-component requests, skip both - just call create_component directly
+- Example workflow for 3 pricing cards:
+  1. plan_components([{name: "PricingBasic", ...}, {name: "PricingPro", ...}, {name: "PricingEnterprise", ...}])
+  2. manage_todos([{id:"1", content:"Create PricingBasic", status:"in_progress"}, ...])
+  3. create_component PricingBasic
+  4. manage_todos([{id:"1", content:"Create PricingBasic", status:"completed"}, {id:"2", ..., status:"in_progress"}, ...])
+  5. create_component PricingPro
+  6. ... and so on until all are done
 
 IMPORTANT:
 - ALWAYS use tools. Never respond with just text.
@@ -244,6 +414,27 @@ interface CreateComponentInput {
   code: string;
   position?: { x: number; y: number };
   size?: { width: number; height: number };
+}
+
+interface InteractionToolInput {
+  handlerName: string;
+  code: string;
+  state?: StateVariable[];
+}
+
+interface CreateLayoutInput {
+  name: string;
+  layout: LayoutDefinition;
+  position?: { x: number; y: number };
+  size?: { width: number; height: number };
+}
+
+interface ManageTodosInput {
+  todos: Array<{
+    id: string;
+    content: string;
+    status: 'pending' | 'in_progress' | 'completed';
+  }>;
 }
 
 export class ComponentAgent extends BaseAgent {
@@ -285,6 +476,25 @@ export class ComponentAgent extends BaseAgent {
         `Try again with a simpler component under ${MAX_COMPONENT_LINES} lines.`;
     }
     return null;
+  }
+
+  /**
+   * Extract all component names from a layout definition (recursive)
+   */
+  private extractComponentNamesFromLayout(layout: LayoutDefinition): string[] {
+    const names: string[] = [];
+
+    const traverse = (child: LayoutChild) => {
+      if ('component' in child) {
+        names.push(child.component);
+      } else if ('children' in child) {
+        // It's a nested layout
+        child.children.forEach(traverse);
+      }
+    };
+
+    layout.children.forEach(traverse);
+    return [...new Set(names)]; // Deduplicate
   }
 
   /**
@@ -338,12 +548,23 @@ export class ComponentAgent extends BaseAgent {
       case 'plan_components': {
         const { components } = toolInput as PlanComponentsInput;
 
-        // Store the plan
-        this.pendingPlan = components.map(c => ({
+        // Auto-assign positions to components that don't have them
+        // Layout: 3 columns grid with spacing
+        const GRID_COLUMNS = 3;
+        const SPACING_X = 350;
+        const SPACING_Y = 450;
+        const START_X = 100;
+        const START_Y = 100;
+
+        // Store the plan with auto-calculated positions
+        this.pendingPlan = components.map((c, index) => ({
           name: c.name,
           description: c.description,
-          position: c.position,
-          size: c.size
+          position: c.position || {
+            x: START_X + (index % GRID_COLUMNS) * SPACING_X,
+            y: START_Y + Math.floor(index / GRID_COLUMNS) * SPACING_Y
+          },
+          size: c.size || { width: 320, height: 400 }
         }));
 
         return {
@@ -357,13 +578,25 @@ export class ComponentAgent extends BaseAgent {
       case 'create_component': {
         const input = toolInput as CreateComponentInput;
         const { name, code } = input;
-        const position = input.position ?? DEFAULT_POSITION;
-        const size = input.size ?? DEFAULT_SIZE;
+
+        // Use position/size from plan if available, else from input, else default
+        const plannedComponent = this.pendingPlan.find(p => p.name === name);
+        const position = input.position ?? plannedComponent?.position ?? DEFAULT_POSITION;
+        const size = input.size ?? plannedComponent?.size ?? DEFAULT_SIZE;
 
         // Validate component size
         const sizeError = this.validateComponentSize(name, code);
         if (sizeError) {
           return { status: 'error', message: sizeError };
+        }
+
+        // Validate component compiles correctly (catches missing imports, syntax errors, etc.)
+        const compileError = validateComponent(code, name);
+        if (compileError) {
+          return {
+            status: 'error',
+            message: `Component "${name}" has errors: ${compileError}. Please fix and try again.`
+          };
         }
 
         // Create the component file
@@ -423,8 +656,91 @@ export class ComponentAgent extends BaseAgent {
           return { status: 'error', message: sizeError };
         }
 
+        // Validate component compiles correctly
+        const compileError = validateComponent(code, name);
+        if (compileError) {
+          return {
+            status: 'error',
+            message: `Component "${name}" has errors: ${compileError}. Please fix and try again.`
+          };
+        }
+
         const result = await fileService.updateProjectComponent(this.projectId, name, code);
         return { ...result, component_name: result.component_name };
+      }
+
+      case 'create_interaction': {
+        const input = toolInput as InteractionToolInput;
+        return {
+          status: 'success',
+          message: 'Interaction created successfully',
+          handlerName: input.handlerName,
+          code: input.code,
+          state: input.state,
+        };
+      }
+
+      case 'create_layout': {
+        const input = toolInput as CreateLayoutInput;
+        const { name, layout } = input;
+        const position = input.position ?? DEFAULT_POSITION;
+        const size = input.size ?? { width: 800, height: 400 };
+
+        // Extract all component names from layout and validate they exist
+        const componentNames = this.extractComponentNamesFromLayout(layout);
+        const missingComponents: string[] = [];
+
+        for (const compName of componentNames) {
+          const exists = await fileService.componentExists(this.projectId!, compName);
+          if (!exists) {
+            missingComponents.push(compName);
+          }
+        }
+
+        if (missingComponents.length > 0) {
+          return {
+            status: 'error',
+            message: `Components not found: ${missingComponents.join(', ')}. Create them first before adding to a layout.`
+          };
+        }
+
+        // Save layout definition
+        const result = await fileService.createLayout(this.projectId!, name, layout);
+
+        if (result.status !== 'success') {
+          return { status: 'error', message: result.message };
+        }
+
+        // Add to canvas layouts
+        const canvasLayout: CanvasLayout = {
+          id: uuidv4(),
+          layoutName: name,
+          position,
+          size
+        };
+
+        // Get existing canvas and add layout
+        const existingCanvas = await projectService.getCanvasWithLayouts(this.projectId!);
+        existingCanvas.layouts = existingCanvas.layouts || [];
+        existingCanvas.layouts.push(canvasLayout);
+        await projectService.saveCanvasWithLayouts(this.projectId!, existingCanvas);
+
+        return {
+          status: 'success',
+          message: `Created layout "${name}" with ${componentNames.length} components`,
+          layout_name: name,
+          canvasLayout,
+          componentCount: componentNames.length
+        };
+      }
+
+      case 'manage_todos': {
+        const { todos } = toolInput as ManageTodosInput;
+        return {
+          status: 'success',
+          message: `Updated ${todos.length} tasks`,
+          todos  // Include for SSE event emission
+        };
       }
 
       default:
@@ -479,6 +795,11 @@ Start now.`
         return false;
       }
 
+      // Don't stop on manage_todos - this is just for user visibility
+      if (result.todos) {
+        return false;
+      }
+
       // Success when a component is created/updated
       if (result.status === 'success' && result.component_name) {
         // If we have a pending plan, check if all components are done
@@ -494,6 +815,68 @@ Start now.`
 
       return false;
     });
+  }
+
+  /**
+   * Generate an interaction with streaming
+   */
+  async *generateInteraction(
+    componentId: string,
+    componentName: string,
+    description: string,
+    eventType: string
+  ): AsyncGenerator<StreamEvent> {
+    yield { type: 'progress', message: `Generating ${eventType} interaction...`, timestamp: Date.now() };
+
+    const messages = [
+      {
+        role: 'user' as const,
+        content: `Create a React event handler for the '${componentName}' component.
+
+Event Type: ${eventType}
+Description: ${description}
+
+Requirements:
+- Generate a clean, working event handler function
+- Include any necessary state variables (using useState)
+- Use TypeScript
+- Follow React best practices
+- The code should be ready to integrate into a React component
+
+IMPORTANT: Use the create_interaction tool to return the handler name, code, and any state variables needed. Do not just describe it - actually call the tool.`
+      }
+    ];
+
+    let capturedInteraction: Interaction | null = null;
+
+    // Run agent loop
+    for await (const event of this.runAgentLoop(messages, (result) => {
+      if (result.status === 'success' && result.handlerName) {
+        // Capture the interaction data
+        capturedInteraction = {
+          id: `${componentId}-${Date.now()}`,
+          type: eventType as InteractionType,
+          description,
+          handlerName: String(result.handlerName),
+          code: String(result.code),
+          state: result.state as StateVariable[] | undefined
+        };
+        return true;
+      }
+      return false;
+    })) {
+      yield event;
+    }
+
+    // Return the captured interaction if successful
+    if (capturedInteraction) {
+      yield {
+        type: 'success',
+        message: 'Interaction created successfully',
+        timestamp: Date.now(),
+        data: { result: capturedInteraction }
+      };
+    }
   }
 }
 

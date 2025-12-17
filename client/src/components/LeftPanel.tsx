@@ -3,14 +3,13 @@ import { Wand2, Loader2, X, Pencil, Wrench, RefreshCw, Trash2 } from 'lucide-rea
 import { generateStream, editProjectComponentStream, listProjectComponents, deleteProjectComponent } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
 import { useGenerationStore } from '../store/generationStore';
-import { useComponentLibraryStore } from '../store/componentLibraryStore';
 import { useProjectStore } from '../store/projectStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ResizeHandle } from './ResizeHandle';
 import { StatusOrb } from './StatusOrb';
 import { Timeline } from './Timeline';
 import { loadComponent } from '../lib/componentRenderer';
-import type { Size } from '../types/index';
+import type { Size, AgentTodo } from '../types/index';
 
 // ============================================
 // CreateTab - Component generation/editing
@@ -21,9 +20,8 @@ function CreateTab() {
   const [error, setError] = useState('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const { currentProject } = useProjectStore();
+  const { currentProject, addAvailableComponent } = useProjectStore();
   const { addToCanvas } = useCanvasStore();
-  const { addAvailableComponent } = useComponentLibraryStore();
   const {
     isGenerating,
     setIsGenerating,
@@ -34,6 +32,7 @@ function CreateTab() {
     generationMode,
     editingComponentName,
     pendingFixError,
+    agentTodos,
     addStreamingEvent,
     clearStreamingEvents,
     setStreamStatus,
@@ -43,6 +42,7 @@ function CreateTab() {
     setEditingComponentName,
     setPendingFixError,
     incrementComponentVersion,
+    setAgentTodos,
   } = useGenerationStore();
 
   // Reset form when switching modes
@@ -68,6 +68,11 @@ function CreateTab() {
   ) => {
     for await (const event of stream) {
       addStreamingEvent(event);
+
+      // Handle todo_update events from agent
+      if (event.type === 'todo_update' && event.data?.todos) {
+        setAgentTodos(event.data.todos);
+      }
 
       // Handle canvas_update events to add new components
       if (event.type === 'canvas_update' && event.data?.canvasComponent) {
@@ -284,6 +289,36 @@ Call read_component to see the code, find the bug, and call update_component wit
 
       {/* Form area - at bottom, fixed height */}
       <div className="flex-shrink-0 p-3 border-t border-neutral-100">
+        {/* Agent-managed TODO list */}
+        {agentTodos.length > 0 && (
+          <div className="mb-3 px-2 py-2 bg-neutral-50 rounded-lg border border-neutral-100">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-neutral-600">
+                Tasks: {agentTodos.filter(t => t.status === 'completed').length}/{agentTodos.length}
+              </span>
+            </div>
+            <div className="space-y-1">
+              {agentTodos.map(todo => (
+                <div
+                  key={todo.id}
+                  className={`flex items-center gap-2 text-xs ${
+                    todo.status === 'completed' ? 'text-green-600' :
+                    todo.status === 'in_progress' ? 'text-blue-600' : 'text-neutral-500'
+                  }`}
+                >
+                  <span className="w-4 text-center">
+                    {todo.status === 'completed' ? '✓' :
+                     todo.status === 'in_progress' ? '→' : '○'}
+                  </span>
+                  <span className={todo.status === 'completed' ? 'line-through' : ''}>
+                    {todo.content}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Edit mode indicator */}
         {isEditMode && (
           <div className="flex items-center gap-2 mb-3 px-2 py-1.5 bg-purple-50 rounded-lg">
@@ -348,6 +383,41 @@ Call read_component to see the code, find the bug, and call update_component wit
 // LibraryTab - Component library with previews
 // ============================================
 
+// Error boundary for component previews
+import React from 'react';
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  fallback: React.ReactNode;
+  onError?: (error: Error) => void;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ComponentErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error): void {
+    this.props.onError?.(error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
+
 function DraggableComponentCard({ name, projectId, onDelete }: { name: string; projectId: string; onDelete: () => void }) {
   const [isDragging, setIsDragging] = useState(false);
   const { componentVersions } = useGenerationStore();
@@ -355,12 +425,14 @@ function DraggableComponentCard({ name, projectId, onDelete }: { name: string; p
   const [Component, setComponent] = useState<ComponentType | null>(null);
   const [naturalSize, setNaturalSize] = useState<Size | null>(null);
   const [loading, setLoading] = useState(true);
+  const [renderError, setRenderError] = useState<string | null>(null);
   const componentRef = useRef<HTMLDivElement>(null);
 
   // Load component when projectId, name, or version changes
   useEffect(() => {
     setLoading(true);
     setNaturalSize(null); // Reset size when reloading
+    setRenderError(null); // Clear any previous render errors
     loadComponent(projectId, name)
       .then((comp) => {
         setComponent(() => comp);
@@ -448,17 +520,32 @@ function DraggableComponentCard({ name, projectId, onDelete }: { name: string; p
         {loading && (
           <div className="text-xs text-neutral-400">Loading...</div>
         )}
-        {!loading && Component && (
-          <div
-            ref={componentRef}
-            className="inline-block"
-            style={{
-              transformOrigin: 'center',
-              transform: scale !== 1 ? `scale(${scale})` : undefined,
-            }}
-          >
-            <Component />
+        {!loading && renderError && (
+          <div className="text-xs text-red-500 text-center px-2">
+            <div className="font-medium">Render error</div>
+            <div className="text-red-400 truncate" title={renderError}>{renderError}</div>
           </div>
+        )}
+        {!loading && !renderError && Component && (
+          <ComponentErrorBoundary
+            fallback={
+              <div className="text-xs text-red-500 text-center px-2">
+                <div className="font-medium">Component crashed</div>
+              </div>
+            }
+            onError={(err) => setRenderError(err.message)}
+          >
+            <div
+              ref={componentRef}
+              className="inline-block"
+              style={{
+                transformOrigin: 'center',
+                transform: scale !== 1 ? `scale(${scale})` : undefined,
+              }}
+            >
+              <Component />
+            </div>
+          </ComponentErrorBoundary>
         )}
       </div>
 
@@ -471,8 +558,7 @@ function DraggableComponentCard({ name, projectId, onDelete }: { name: string; p
 }
 
 function LibraryTab() {
-  const { availableComponents, setAvailableComponents, removeAvailableComponent } = useComponentLibraryStore();
-  const { currentProject } = useProjectStore();
+  const { currentProject, availableComponents, setAvailableComponents, removeAvailableComponent } = useProjectStore();
 
   const loadComponents = async () => {
     if (!currentProject) return;

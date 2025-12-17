@@ -236,3 +236,56 @@ export async function saveProjectCanvas(projectId: string, components: CanvasCom
   });
   return response.json();
 }
+
+// ============================================
+// Layout API Functions
+// ============================================
+
+export interface LayoutDefinitionData {
+  name?: string;
+  type: 'Stack' | 'Flex' | 'Grid' | 'Container';
+  props?: Record<string, unknown>;
+  children: Array<{ component: string; props?: Record<string, unknown> } | LayoutDefinitionData>;
+}
+
+export interface CanvasLayoutData {
+  id: string;
+  layoutName: string;
+  position: { x: number; y: number };
+  size?: { width: number; height: number };
+}
+
+export async function listProjectLayouts(projectId: string): Promise<{ status: string; layouts?: string[]; message?: string }> {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/layouts`);
+  return response.json();
+}
+
+export async function getProjectLayout(projectId: string, layoutName: string): Promise<{ status: string; layout?: LayoutDefinitionData; message?: string }> {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/layouts/${layoutName}`);
+  return response.json();
+}
+
+export async function createProjectLayout(projectId: string, name: string, layout: LayoutDefinitionData): Promise<{ status: string; layout_name?: string; message?: string }> {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/layouts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, layout }),
+  });
+  return response.json();
+}
+
+export async function updateProjectLayout(projectId: string, layoutName: string, layout: LayoutDefinitionData): Promise<{ status: string; message?: string }> {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/layouts/${layoutName}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ layout }),
+  });
+  return response.json();
+}
+
+export async function deleteProjectLayout(projectId: string, layoutName: string): Promise<{ status: string; message?: string }> {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/layouts/${layoutName}`, {
+    method: 'DELETE',
+  });
+  return response.json();
+}

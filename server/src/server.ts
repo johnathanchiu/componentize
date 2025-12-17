@@ -3,7 +3,6 @@ import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { appConfig } from './config';
 import { componentAgent } from './agents/componentAgent';
-import { interactionAgent} from './agents/interactionAgent';
 import { fileService } from './services/fileService';
 import { exportService } from './services/exportService';
 import { previewService } from './services/previewService';
@@ -82,7 +81,7 @@ server.post<{ Body: GenerateInteractionRequest }>('/api/generate-interaction-str
   });
 
   try {
-    for await (const event of interactionAgent.generateInteraction(
+    for await (const event of componentAgent.generateInteraction(
       componentId,
       componentName,
       description,
@@ -362,6 +361,68 @@ server.put<{ Params: { id: string }; Body: { components: any[] } }>('/api/projec
       message: error instanceof Error ? error.message : 'Failed to save canvas',
     });
   }
+});
+
+// ============================================================================
+// Layout Endpoints
+// ============================================================================
+
+/**
+ * List layouts in a project
+ */
+server.get<{ Params: { id: string } }>('/api/projects/:id/layouts', async (request) => {
+  const { id } = request.params;
+  return await fileService.listLayouts(id);
+});
+
+/**
+ * Get a layout definition
+ */
+server.get<{ Params: { id: string; layoutName: string } }>('/api/projects/:id/layouts/:layoutName', async (request) => {
+  const { id, layoutName } = request.params;
+  return await fileService.readLayout(id, layoutName);
+});
+
+/**
+ * Create a layout
+ */
+server.post<{ Params: { id: string }; Body: { name: string; layout: any } }>('/api/projects/:id/layouts', async (request, reply) => {
+  const { id } = request.params;
+  const { name, layout } = request.body;
+
+  if (!name || !layout) {
+    return reply.code(400).send({
+      status: 'error',
+      message: 'name and layout are required',
+    });
+  }
+
+  return await fileService.createLayout(id, name, layout);
+});
+
+/**
+ * Update a layout
+ */
+server.put<{ Params: { id: string; layoutName: string }; Body: { layout: any } }>('/api/projects/:id/layouts/:layoutName', async (request, reply) => {
+  const { id, layoutName } = request.params;
+  const { layout } = request.body;
+
+  if (!layout) {
+    return reply.code(400).send({
+      status: 'error',
+      message: 'layout is required',
+    });
+  }
+
+  return await fileService.updateLayout(id, layoutName, layout);
+});
+
+/**
+ * Delete a layout
+ */
+server.delete<{ Params: { id: string; layoutName: string } }>('/api/projects/:id/layouts/:layoutName', async (request) => {
+  const { id, layoutName } = request.params;
+  return await fileService.deleteLayout(id, layoutName);
 });
 
 // ============================================================================

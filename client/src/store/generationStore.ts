@@ -1,11 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { StreamEvent, StreamStatus } from '../types/index';
+import type { StreamEvent, StreamStatus, ComponentPlan, CanvasComponent, AgentTodo } from '../types/index';
 
 interface ErrorContext {
   message: string;
   stack?: string;
 }
+
+// Page generation status (merged from pageGenerationStore)
+export type PageGenerationStatus = 'idle' | 'modal' | 'planning' | 'generating' | 'complete' | 'error';
 
 interface GenerationStore {
   // Project context for session scoping
@@ -16,7 +19,7 @@ interface GenerationStore {
   isGenerating: boolean;
   setIsGenerating: (value: boolean) => void;
 
-  // Streaming state
+  // Single component streaming state
   streamingEvents: StreamEvent[];
   streamStatus: StreamStatus;
   isStreamPanelExpanded: boolean;
@@ -26,7 +29,22 @@ interface GenerationStore {
   pendingFixError: ErrorContext | null;
   componentVersions: Record<string, number>;
 
-  // Actions
+  // Agent-managed todos
+  agentTodos: AgentTodo[];
+  setAgentTodos: (todos: AgentTodo[]) => void;
+
+  // Page generation state (merged from pageGenerationStore)
+  pageStatus: PageGenerationStatus;
+  pagePlan: ComponentPlan[] | null;
+  pageCurrentComponentIndex: number;
+  pageTotalComponents: number;
+  pageCompletedComponents: string[];
+  pageFailedComponents: Array<{ name: string; error: string }>;
+  pageCanvasComponents: CanvasComponent[];
+  pageEvents: StreamEvent[];
+  pageCurrentThinking: string;
+
+  // Single component actions
   addStreamingEvent: (event: StreamEvent) => void;
   clearStreamingEvents: () => void;
   setStreamStatus: (status: StreamStatus) => void;
@@ -38,6 +56,20 @@ interface GenerationStore {
   incrementComponentVersion: (componentName: string) => void;
   startEditing: (componentName: string) => void;
   startFixing: (componentName: string, error?: ErrorContext) => void;
+
+  // Page generation actions (merged from pageGenerationStore)
+  pageOpenModal: () => void;
+  pageCloseModal: () => void;
+  pageStartGeneration: () => void;
+  pageSetPlan: (plan: ComponentPlan[], total: number) => void;
+  pageSetCurrentComponent: (index: number, name: string) => void;
+  pageAddThinking: (text: string) => void;
+  pageMarkComponentComplete: (name: string, canvasComponent?: CanvasComponent) => void;
+  pageMarkComponentFailed: (name: string, error: string) => void;
+  pageAddEvent: (event: StreamEvent) => void;
+  pageComplete: () => void;
+  pageSetError: (message: string) => void;
+  pageReset: () => void;
 }
 
 export const useGenerationStore = create<GenerationStore>()(
@@ -45,13 +77,42 @@ export const useGenerationStore = create<GenerationStore>()(
     (set) => ({
       // Project context
       currentProjectId: null,
-      setCurrentProjectId: (projectId) => set({ currentProjectId: projectId }),
+      setCurrentProjectId: (projectId) => set((state) => {
+        // Only reset if project actually changed
+        if (state.currentProjectId === projectId) {
+          return { currentProjectId: projectId };
+        }
+        // Clear generation state when switching projects
+        return {
+          currentProjectId: projectId,
+          // Reset single component streaming state
+          streamingEvents: [],
+          streamStatus: 'idle',
+          currentComponentName: '',
+          generationMode: 'create',
+          editingComponentName: null,
+          pendingFixError: null,
+          isGenerating: false,
+          // Reset agent todos
+          agentTodos: [],
+          // Reset page generation state
+          pageStatus: 'idle',
+          pagePlan: null,
+          pageCurrentComponentIndex: 0,
+          pageTotalComponents: 0,
+          pageCompletedComponents: [],
+          pageFailedComponents: [],
+          pageCanvasComponents: [],
+          pageEvents: [],
+          pageCurrentThinking: '',
+        };
+      }),
 
       // UI state
       isGenerating: false,
       setIsGenerating: (value) => set({ isGenerating: value }),
 
-      // Streaming state
+      // Single component streaming state
       streamingEvents: [],
       streamStatus: 'idle',
       isStreamPanelExpanded: false,
@@ -61,6 +122,21 @@ export const useGenerationStore = create<GenerationStore>()(
       pendingFixError: null,
       componentVersions: {},
 
+      // Agent-managed todos
+      agentTodos: [],
+
+      // Page generation state
+      pageStatus: 'idle',
+      pagePlan: null,
+      pageCurrentComponentIndex: 0,
+      pageTotalComponents: 0,
+      pageCompletedComponents: [],
+      pageFailedComponents: [],
+      pageCanvasComponents: [],
+      pageEvents: [],
+      pageCurrentThinking: '',
+
+      // Single component actions
       addStreamingEvent: (event) =>
         set((state) => ({
           streamingEvents: [...state.streamingEvents, event],
@@ -103,6 +179,73 @@ export const useGenerationStore = create<GenerationStore>()(
         isStreamPanelExpanded: true,
         pendingFixError: error || null,
       }),
+
+      // Agent-managed todos
+      setAgentTodos: (todos) => set({ agentTodos: todos }),
+
+      // Page generation actions
+      pageOpenModal: () => set({ pageStatus: 'modal' }),
+
+      pageCloseModal: () => set({ pageStatus: 'idle' }),
+
+      pageStartGeneration: () => set({
+        pageStatus: 'planning',
+        pagePlan: null,
+        pageCurrentComponentIndex: 0,
+        pageTotalComponents: 0,
+        pageCompletedComponents: [],
+        pageFailedComponents: [],
+        pageCanvasComponents: [],
+        pageEvents: [],
+        pageCurrentThinking: '',
+      }),
+
+      pageSetPlan: (plan, total) => set({
+        pageStatus: 'generating',
+        pagePlan: plan,
+        pageTotalComponents: total,
+      }),
+
+      pageSetCurrentComponent: (index, name) => set({
+        pageCurrentComponentIndex: index,
+        pageCurrentThinking: `Creating ${name}...`,
+      }),
+
+      pageAddThinking: (text) => set({ pageCurrentThinking: text }),
+
+      pageMarkComponentComplete: (name, canvasComponent) => set((state) => ({
+        pageCompletedComponents: [...state.pageCompletedComponents, name],
+        pageCanvasComponents: canvasComponent
+          ? [...state.pageCanvasComponents, canvasComponent]
+          : state.pageCanvasComponents,
+      })),
+
+      pageMarkComponentFailed: (name, error) => set((state) => ({
+        pageFailedComponents: [...state.pageFailedComponents, { name, error }],
+      })),
+
+      pageAddEvent: (event) => set((state) => ({
+        pageEvents: [...state.pageEvents, event],
+      })),
+
+      pageComplete: () => set({ pageStatus: 'complete' }),
+
+      pageSetError: (message) => set({
+        pageStatus: 'error',
+        pageCurrentThinking: message,
+      }),
+
+      pageReset: () => set({
+        pageStatus: 'idle',
+        pagePlan: null,
+        pageCurrentComponentIndex: 0,
+        pageTotalComponents: 0,
+        pageCompletedComponents: [],
+        pageFailedComponents: [],
+        pageCanvasComponents: [],
+        pageEvents: [],
+        pageCurrentThinking: '',
+      }),
     }),
     {
       name: 'componentize-generation',
@@ -115,6 +258,7 @@ export const useGenerationStore = create<GenerationStore>()(
         currentComponentName: state.currentComponentName,
         componentVersions: state.componentVersions,
         isStreamPanelExpanded: state.isStreamPanelExpanded,
+        agentTodos: state.agentTodos,
       }),
     }
   )

@@ -68,12 +68,15 @@ body {
   cursor: nwse-resize;
 }
 
-/* Make React Flow component nodes transparent */
+/* Make React Flow component nodes transparent and shrink to content */
 .react-flow__node-component {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
+  /* Shrink to content size - no !important so inline style can override after resize */
+  width: fit-content;
+  height: fit-content;
 }
 
 /* Drag preview node for library-to-canvas drag */

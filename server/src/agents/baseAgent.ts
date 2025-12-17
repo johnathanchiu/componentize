@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { appConfig } from '../config';
-import type { StreamEvent, CanvasComponent } from '../../../shared/types';
+import type { StreamEvent, CanvasComponent, AgentTodo } from '../../../shared/types';
 
 export interface Tool {
   name: string;
@@ -146,7 +146,7 @@ When writing React components:
         // Track state during streaming
         let accumulatedText = '';
         let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
-        const pendingToolUses: Array<{ id: string; name: string; input: unknown }> = [];
+        const pendingToolUses: Array<{ id: string; name: string; input: unknown; result?: ToolResult; shouldExit?: boolean }> = [];
         let lastCodeStreamTime = 0;
         const CODE_STREAM_INTERVAL = 100; // Emit code chunks every 100ms
 
@@ -238,15 +238,11 @@ When writing React components:
                 accumulatedText = '';
               }
 
-              // If we finished a tool use block, parse and queue it
+              // If we finished a tool use block, parse and EXECUTE immediately
+              // This enables incremental canvas updates during streaming
               if (currentToolUse) {
                 try {
                   const toolInput = JSON.parse(currentToolUse.inputJson || '{}');
-                  pendingToolUses.push({
-                    id: currentToolUse.id,
-                    name: currentToolUse.name,
-                    input: toolInput,
-                  });
 
                   // Emit final code event with complete code
                   if (toolInput.code) {
@@ -262,6 +258,60 @@ When writing React components:
                       }
                     };
                   }
+
+                  // Execute tool IMMEDIATELY during streaming for incremental updates
+                  const result = await this.executeTool(currentToolUse.name, toolInput);
+
+                  // Store for later message construction
+                  pendingToolUses.push({
+                    id: currentToolUse.id,
+                    name: currentToolUse.name,
+                    input: toolInput,
+                    result, // Store the result too
+                  });
+
+                  // Emit tool result event immediately
+                  yield {
+                    type: 'tool_result',
+                    message: result.message,
+                    timestamp: Date.now(),
+                    data: {
+                      toolName: currentToolUse.name,
+                      toolUseId: currentToolUse.id,
+                      status: result.status,
+                      result: result,
+                    }
+                  };
+
+                  // Emit canvas_update event immediately if component was added
+                  if (result.canvasComponent) {
+                    yield {
+                      type: 'canvas_update',
+                      message: `Added ${result.component_name} to canvas`,
+                      timestamp: Date.now(),
+                      data: {
+                        canvasComponent: result.canvasComponent as CanvasComponent,
+                      }
+                    };
+                  }
+
+                  // Emit todo_update event if tool result contains todos
+                  if (result.todos) {
+                    yield {
+                      type: 'todo_update',
+                      message: 'Tasks updated',
+                      timestamp: Date.now(),
+                      data: {
+                        todos: result.todos as AgentTodo[],
+                      }
+                    };
+                  }
+
+                  // Check if this tool call indicates success (early exit)
+                  if (onSuccess(result)) {
+                    // Mark that we should exit after stream completes
+                    pendingToolUses[pendingToolUses.length - 1].shouldExit = true;
+                  }
                 } catch {
                   // JSON parse error - skip
                 }
@@ -274,7 +324,7 @@ When writing React components:
         // Get final message after streaming completes
         const response = await stream.finalMessage();
 
-        // Handle tool use
+        // Handle tool use - tools were already executed during streaming
         if (response.stop_reason === 'tool_use') {
           // Add assistant response to messages
           messages.push({
@@ -282,63 +332,29 @@ When writing React components:
             content: response.content,
           });
 
-          // Process and execute tool calls
-          const toolResults: Anthropic.MessageParam[] = [];
-
-          for (const contentBlock of response.content) {
-            if (contentBlock.type === 'tool_use') {
-              const { name: toolName, input: toolInput, id: toolUseId } = contentBlock;
-
-              // Execute the tool
-              const result = await this.executeTool(toolName, toolInput);
-
-              // Emit tool result event
-              yield {
-                type: 'tool_result',
-                message: result.message,
-                timestamp: Date.now(),
-                data: {
-                  toolName,
-                  toolUseId,
-                  status: result.status,
-                  result: result,
-                }
-              };
-
-              // Emit canvas_update event if a component was added to canvas
-              if (result.canvasComponent) {
-                yield {
-                  type: 'canvas_update',
-                  message: `Added ${result.component_name} to canvas`,
-                  timestamp: Date.now(),
-                  data: {
-                    canvasComponent: result.canvasComponent as CanvasComponent,
-                  }
-                };
-              }
-
-              // Add tool result to messages
-              toolResults.push({
-                role: 'user',
-                content: [{
-                  type: 'tool_result',
-                  tool_use_id: toolUseId,
-                  content: JSON.stringify(result),
-                }],
-              });
-
-              // Check if this tool call indicates success
-              if (onSuccess(result)) {
-                yield {
-                  type: 'success',
-                  message: result.message,
-                  timestamp: Date.now(),
-                  data: { result }
-                };
-                return;
-              }
-            }
+          // Check if any tool execution triggered early exit
+          const exitTool = pendingToolUses.find(t => t.shouldExit);
+          if (exitTool && exitTool.result) {
+            yield {
+              type: 'success',
+              message: exitTool.result.message,
+              timestamp: Date.now(),
+              data: { result: exitTool.result }
+            };
+            return;
           }
+
+          // Build tool result messages from already-executed tools
+          const toolResults: Anthropic.MessageParam[] = pendingToolUses
+            .filter(t => t.result)
+            .map(t => ({
+              role: 'user' as const,
+              content: [{
+                type: 'tool_result' as const,
+                tool_use_id: t.id,
+                content: JSON.stringify(t.result),
+              }],
+            }));
 
           // Add tool results to messages
           messages.push(...toolResults);

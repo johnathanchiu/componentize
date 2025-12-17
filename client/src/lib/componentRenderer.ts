@@ -1,6 +1,7 @@
 import { transform } from 'sucrase';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSharedState } from './sharedStore';
+import { Stack, Flex, Grid as LayoutGrid, Container } from './layoutPrimitives';
 
 // Import all shadcn components
 import { Button } from '@/components/ui/button';
@@ -149,6 +150,7 @@ import {
   ToggleRight,
   Trophy,
   Wrench,
+  Quote,
   // Social/brand icons
   Github,
   Twitter,
@@ -339,6 +341,7 @@ const COMPONENT_SCOPE: Record<string, unknown> = {
   ToggleRight,
   Trophy,
   Wrench,
+  Quote,
   // Social/brand icons
   Github,
   Twitter,
@@ -346,6 +349,12 @@ const COMPONENT_SCOPE: Record<string, unknown> = {
   Facebook,
   Instagram,
   Youtube,
+
+  // Layout primitives (LayoutGrid to avoid conflict with lucide Grid icon)
+  Stack,
+  Flex,
+  LayoutGrid,
+  Container,
 };
 
 /**

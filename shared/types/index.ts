@@ -119,9 +119,17 @@ export type StreamEventType =
   | 'page_plan'          // AI's plan for what components to create
   | 'component_start'    // Starting generation of a specific component
   | 'component_complete' // Component finished (success or failure)
-  | 'canvas_update';     // Component placed on canvas
+  | 'canvas_update'      // Component placed on canvas
+  | 'todo_update';       // Agent-managed TODO list update
 
 export type StreamStatus = 'idle' | 'thinking' | 'acting' | 'success' | 'error';
+
+// Agent-managed TODO item
+export interface AgentTodo {
+  id: string;
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
 
 // Layout hint for smart positioning
 export type LayoutHint =
@@ -177,6 +185,7 @@ export interface StreamEvent {
     componentName?: string;              // Name of component being processed
     canvasComponent?: CanvasComponent;   // For canvas_update event
     pageResult?: PageGenerationResult;   // For final success event
+    todos?: AgentTodo[];                 // For todo_update event
   };
 }
 
@@ -188,6 +197,72 @@ export interface PageLayout {
     size?: Size;
     interactions?: Interaction[];
   }>;
+}
+
+// ============================================================================
+// Layout DSL Types
+// ============================================================================
+
+export type LayoutPrimitiveType = 'Stack' | 'Flex' | 'Grid' | 'Container';
+
+// Props for each layout primitive
+export interface StackLayoutProps {
+  direction?: 'vertical' | 'horizontal';
+  gap?: number;
+  align?: 'start' | 'center' | 'end' | 'stretch';
+  justify?: 'start' | 'center' | 'end' | 'between' | 'around';
+  padding?: number;
+  className?: string;
+}
+
+export interface FlexLayoutProps {
+  direction?: 'row' | 'column' | 'row-reverse' | 'column-reverse';
+  wrap?: boolean | 'reverse';
+  gap?: number;
+  align?: 'start' | 'center' | 'end' | 'stretch' | 'baseline';
+  justify?: 'start' | 'center' | 'end' | 'between' | 'around' | 'evenly';
+  padding?: number;
+  className?: string;
+}
+
+export interface GridLayoutProps {
+  columns?: number | string;
+  rows?: number | string;
+  gap?: number;
+  align?: 'start' | 'center' | 'end' | 'stretch';
+  justify?: 'start' | 'center' | 'end' | 'stretch';
+  padding?: number;
+  className?: string;
+}
+
+export interface ContainerLayoutProps {
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
+  center?: boolean;
+  padding?: number;
+  className?: string;
+}
+
+export type LayoutProps = StackLayoutProps | FlexLayoutProps | GridLayoutProps | ContainerLayoutProps;
+
+// A child in a layout can be either a component reference or a nested layout
+export type LayoutChild =
+  | { component: string; props?: Record<string, unknown> }
+  | LayoutDefinition;
+
+// Layout definition (stored in layouts/{name}.json)
+export interface LayoutDefinition {
+  name?: string; // Optional for nested layouts
+  type: LayoutPrimitiveType;
+  props?: LayoutProps;
+  children: LayoutChild[];
+}
+
+// Canvas layout item (what's stored in canvas.json)
+export interface CanvasLayout {
+  id: string;
+  layoutName: string;
+  position: Position;
+  size?: Size;
 }
 
 // Visual Editing Types (for PropertyPanel)

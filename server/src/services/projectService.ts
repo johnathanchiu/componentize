@@ -18,6 +18,18 @@ export interface CanvasComponent {
   interactions?: any[];
 }
 
+export interface CanvasLayout {
+  id: string;
+  layoutName: string;
+  position: { x: number; y: number };
+  size?: { width: number; height: number };
+}
+
+export interface CanvasState {
+  components: CanvasComponent[];
+  layouts: CanvasLayout[];
+}
+
 class ProjectService {
   /**
    * Get the path to the projects directory inside the workspace
@@ -176,6 +188,38 @@ class ProjectService {
   async saveCanvas(projectId: string, components: CanvasComponent[]): Promise<void> {
     const canvasPath = this.getCanvasPath(projectId);
     await fs.writeFile(canvasPath, JSON.stringify(components, null, 2));
+  }
+
+  /**
+   * Get the canvas state with layouts for a project
+   * Handles migration from old format (array) to new format (object with components and layouts)
+   */
+  async getCanvasWithLayouts(projectId: string): Promise<CanvasState> {
+    try {
+      const canvasPath = this.getCanvasPath(projectId);
+      const content = await fs.readFile(canvasPath, 'utf-8');
+      const parsed = JSON.parse(content);
+
+      // Handle old format (array of components) vs new format (object with components and layouts)
+      if (Array.isArray(parsed)) {
+        return { components: parsed, layouts: [] };
+      }
+
+      return {
+        components: parsed.components || [],
+        layouts: parsed.layouts || []
+      };
+    } catch {
+      return { components: [], layouts: [] };
+    }
+  }
+
+  /**
+   * Save the canvas state with layouts for a project
+   */
+  async saveCanvasWithLayouts(projectId: string, state: CanvasState): Promise<void> {
+    const canvasPath = this.getCanvasPath(projectId);
+    await fs.writeFile(canvasPath, JSON.stringify(state, null, 2));
   }
 
   /**

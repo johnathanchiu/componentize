@@ -20,56 +20,124 @@ import { useProjectStore } from '../../store/projectStore';
 import { useCmdKey } from '../../hooks/useCmdKey';
 import { groupConnectionsByKey, generateConnectionColors } from '../../lib/sharedStore';
 import { ComponentNode, type ComponentNodeData } from './ComponentNode';
+import { LayoutNode, type LayoutNodeData } from './LayoutNode';
 
 // Register custom node types - must be outside component to prevent re-renders
 const nodeTypes = {
   component: ComponentNode,
+  layout: LayoutNode,
 };
+
+// Union type for node data
+type CanvasNodeData = ComponentNodeData | LayoutNodeData;
 
 function DragDropCanvasInner() {
   const { screenToFlowPosition } = useReactFlow();
   const { currentProject } = useProjectStore();
   const {
     canvasComponents,
+    canvasLayouts,
     selectedComponentId,
+    selectedLayoutId,
     setSelectedComponentId,
+    setSelectedLayoutId,
     updateSize,
+    updateNaturalSize,
     updatePosition,
+    updateLayoutPosition,
+    updateLayoutSize,
     addToCanvas,
+    removeFromCanvas,
+    removeLayout,
     stateConnections,
     showConnections,
     toggleShowConnections,
   } = useCanvasStore();
-  const { setGenerationMode, setEditingComponentName } = useGenerationStore();
+  const { setGenerationMode, setEditingComponentName, startFixing } = useGenerationStore();
 
   // Track Cmd/Ctrl key for edit mode
   const cmdKeyHeld = useCmdKey();
+
+  // ============================================
+  // KEYBOARD: Delete key to remove selected items
+  // ============================================
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle Delete/Backspace when a component or layout is selected
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Don't delete if user is typing in an input
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+          return;
+        }
+
+        if (selectedComponentId) {
+          e.preventDefault();
+          removeFromCanvas(selectedComponentId);
+          setSelectedComponentId(null);
+        } else if (selectedLayoutId) {
+          e.preventDefault();
+          removeLayout(selectedLayoutId);
+          setSelectedLayoutId(null);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedComponentId, selectedLayoutId, removeFromCanvas, removeLayout, setSelectedComponentId, setSelectedLayoutId]);
 
   // ============================================
   // NODES: Zustand → Derived → React Flow State
   // ============================================
 
   // Step 1: Derive nodes from Zustand store (source of truth)
-  const derivedNodes = useMemo((): Node<ComponentNodeData>[] => {
+  const derivedNodes = useMemo((): Node<CanvasNodeData>[] => {
     if (!currentProject) return [];
 
-    return canvasComponents.map((item) => ({
+    // Component nodes
+    const componentNodes: Node<ComponentNodeData>[] = canvasComponents.map((item) => ({
       id: item.id,
       type: 'component',
       position: { x: item.position.x, y: item.position.y },
       data: {
         componentName: item.componentName,
         projectId: currentProject.id,
-        naturalSize: item.size,
+        targetSize: item.size, // User-set size after resize
+        naturalSize: item.naturalSize, // Stored reference size for scaling
+        hasExplicitSize: !!item.size,
         _componentId: item.id,
+        onResize: (width: number, height: number) => updateSize(item.id, width, height),
+        onNaturalSizeChange: (size: { width: number; height: number }) => updateNaturalSize(item.id, size.width, size.height),
+        onFix: (errorMessage: string, errorStack?: string) => {
+          startFixing(item.componentName, { message: errorMessage, stack: errorStack });
+        },
       },
       selected: selectedComponentId === item.id,
       style: item.size ? { width: item.size.width, height: item.size.height } : undefined,
     }));
-  }, [canvasComponents, currentProject, selectedComponentId]);
+
+    // Layout nodes
+    const layoutNodes: Node<LayoutNodeData>[] = canvasLayouts.map((layout) => ({
+      id: layout.id,
+      type: 'layout',
+      position: { x: layout.position.x, y: layout.position.y },
+      data: {
+        layoutName: layout.layoutName,
+        projectId: currentProject.id,
+        targetSize: layout.size,
+        hasExplicitSize: !!layout.size,
+        onResize: (width: number, height: number) => updateLayoutSize(layout.id, width, height),
+      },
+      selected: selectedLayoutId === layout.id,
+      style: layout.size ? { width: layout.size.width, height: layout.size.height } : undefined,
+    }));
+
+    return [...componentNodes, ...layoutNodes];
+  }, [canvasComponents, canvasLayouts, currentProject, selectedComponentId, selectedLayoutId, updateSize, updateNaturalSize, updateLayoutSize]);
 
   // Step 2: React Flow local state (allows RF to handle drag/select smoothly)
-  const [nodes, setNodes] = useState<Node<ComponentNodeData>[]>([]);
+  const [nodes, setNodes] = useState<Node<CanvasNodeData>[]>([]);
 
   // Step 3: Sync derived nodes → React Flow state, preserving RF's internal measurements
   useEffect(() => {
@@ -162,39 +230,37 @@ function DragDropCanvasInner() {
    * but only persist to Zustand store at specific times (drag end, resize).
    */
   const handleNodesChange = useCallback(
-    (changes: NodeChange<Node<ComponentNodeData>>[]) => {
+    (changes: NodeChange<Node<CanvasNodeData>>[]) => {
       // Apply all changes to React Flow state for smooth interactions
       setNodes((current) => applyNodeChanges(changes, current));
 
       // Sync specific changes back to Zustand store
       changes.forEach((change) => {
-        if (change.type === 'dimensions' && change.dimensions) {
-          // Sync size changes (from NodeResizer)
-          const component = canvasComponents.find((c) => c.id === change.id);
-          const newWidth = Math.round(change.dimensions.width);
-          const newHeight = Math.round(change.dimensions.height);
+        // Note: Dimension changes from auto-measurement are ignored here.
+        // Size is only updated via onResizeEnd callback from NodeResizer.
+        if (change.type === 'select') {
+          // Check if this is a layout or component node
+          const isLayout = canvasLayouts.some((l) => l.id === change.id);
 
-          // Only update if actually changed (prevents infinite loop)
-          if (
-            !component?.size ||
-            component.size.width !== newWidth ||
-            component.size.height !== newHeight
-          ) {
-            updateSize(change.id, newWidth, newHeight);
-          }
-        } else if (change.type === 'select') {
-          // Sync selection to store
           if (change.selected) {
-            setSelectedComponentId(change.id);
-          } else if (selectedComponentId === change.id) {
-            setSelectedComponentId(null);
+            if (isLayout) {
+              setSelectedLayoutId(change.id);
+            } else {
+              setSelectedComponentId(change.id);
+            }
+          } else {
+            if (isLayout && selectedLayoutId === change.id) {
+              setSelectedLayoutId(null);
+            } else if (!isLayout && selectedComponentId === change.id) {
+              setSelectedComponentId(null);
+            }
           }
         }
         // Position changes are applied to RF state but NOT persisted here
         // They are persisted in onNodeDragStop
       });
     },
-    [canvasComponents, updateSize, setSelectedComponentId, selectedComponentId]
+    [canvasComponents, canvasLayouts, setSelectedComponentId, setSelectedLayoutId, selectedComponentId, selectedLayoutId]
   );
 
   /**
@@ -203,9 +269,14 @@ function DragDropCanvasInner() {
    */
   const handleNodeDragStop = useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      updatePosition(node.id, node.position.x, node.position.y);
+      const isLayout = canvasLayouts.some((l) => l.id === node.id);
+      if (isLayout) {
+        updateLayoutPosition(node.id, node.position.x, node.position.y);
+      } else {
+        updatePosition(node.id, node.position.x, node.position.y);
+      }
     },
-    [updatePosition]
+    [canvasLayouts, updatePosition, updateLayoutPosition]
   );
 
   /**
@@ -213,9 +284,10 @@ function DragDropCanvasInner() {
    */
   const handlePaneClick = useCallback(() => {
     setSelectedComponentId(null);
+    setSelectedLayoutId(null);
     setEditingComponentName(null);
     setGenerationMode('create');
-  }, [setSelectedComponentId, setEditingComponentName, setGenerationMode]);
+  }, [setSelectedComponentId, setSelectedLayoutId, setEditingComponentName, setGenerationMode]);
 
   // ============================================
   // DRAG & DROP FROM LIBRARY
@@ -252,10 +324,11 @@ function DragDropCanvasInner() {
   // ============================================
 
   const hasConnections = stateConnections.length > 0;
+  const hasContent = canvasComponents.length > 0 || canvasLayouts.length > 0;
 
   return (
     <div className="h-full w-full relative" data-canvas="true">
-      {canvasComponents.length === 0 ? (
+      {!hasContent ? (
         // Empty state
         <div
           className="h-full flex items-center justify-center bg-neutral-50"
@@ -289,6 +362,8 @@ function DragDropCanvasInner() {
           minZoom={0.1}
           maxZoom={2}
           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          // Disable double-click zoom (prevents zoom when rapidly clicking component buttons)
+          zoomOnDoubleClick={false}
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#D4D4D4" />
