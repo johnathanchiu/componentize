@@ -2,16 +2,11 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { appConfig } from './config';
-import { componentAgent } from './agents/componentAgent';
+import { componentAgent } from './agents';
 import { fileService } from './services/fileService';
 import { exportService } from './services/exportService';
-import { previewService } from './services/previewService';
 import { projectService } from './services/projectService';
-import { viteDevServerService } from './services/viteDevServerService';
-import type {
-  GenerateInteractionRequest,
-  ExportPageRequest
-} from '../../shared/types';
+import type { ExportPageRequest } from '../../shared/types';
 
 // Simple request type for unified generation
 interface GenerateRequest {
@@ -55,51 +50,6 @@ server.get('/api/health', async () => {
 });
 
 // ============================================================================
-// Interaction Endpoints (Streaming)
-// ============================================================================
-
-/**
- * Generate interaction with streaming progress
- */
-server.post<{ Body: GenerateInteractionRequest }>('/api/generate-interaction-stream', async (request, reply) => {
-  const { componentId, componentName, description, eventType } = request.body;
-
-  if (!componentId || !componentName || !description) {
-    return reply.code(400).send({
-      status: 'error',
-      message: 'componentId, componentName, and description are required',
-    });
-  }
-
-  // Set headers for Server-Sent Events (including CORS)
-  reply.raw.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': request.headers.origin || '*',
-    'Access-Control-Allow-Credentials': 'true',
-  });
-
-  try {
-    for await (const event of componentAgent.generateInteraction(
-      componentId,
-      componentName,
-      description,
-      eventType || 'onClick'
-    )) {
-      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
-    }
-  } catch (error) {
-    reply.raw.write(`data: ${JSON.stringify({
-      type: 'error',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    })}\n\n`);
-  }
-
-  reply.raw.end();
-});
-
-// ============================================================================
 // Export Endpoint
 // ============================================================================
 
@@ -129,26 +79,6 @@ server.post<{ Body: ExportPageRequest }>('/api/export-page', async (request, rep
       message: error instanceof Error ? error.message : 'Failed to export page',
     });
   }
-});
-
-// ============================================================================
-// Preview Endpoint
-// ============================================================================
-
-/**
- * Serve component preview HTML
- */
-server.get<{ Params: { componentName: string } }>('/preview/:componentName', async (request, reply) => {
-  const { componentName } = request.params;
-
-  const html = await previewService.generatePreviewHTML(componentName);
-
-  if (!html) {
-    return reply.code(404).send(`<html><body><p>Component '${componentName}' not found</p></body></html>`);
-  }
-
-  reply.header('Content-Type', 'text/html');
-  return reply.send(html);
 });
 
 // ============================================================================
@@ -188,7 +118,7 @@ server.get('/api/projects', async () => {
 });
 
 /**
- * Get a specific project
+ * Get a specific project with all related data (components, canvas, layouts)
  */
 server.get<{ Params: { id: string } }>('/api/projects/:id', async (request, reply) => {
   const { id } = request.params;
@@ -201,7 +131,20 @@ server.get<{ Params: { id: string } }>('/api/projects/:id', async (request, repl
     });
   }
 
-  return { status: 'success', project };
+  // Fetch all project data in parallel
+  const [componentsResult, canvas, layouts] = await Promise.all([
+    fileService.listProjectComponents(id),
+    projectService.getCanvas(id),
+    fileService.listAllLayouts(id),
+  ]);
+
+  return {
+    status: 'success',
+    project,
+    components: componentsResult.components || [],
+    canvas: canvas || [],
+    layouts: layouts || [],
+  };
 });
 
 /**
@@ -222,33 +165,11 @@ server.delete<{ Params: { id: string } }>('/api/projects/:id', async (request, r
 });
 
 /**
- * List components in a project
+ * Get component code
  */
-server.get<{ Params: { id: string } }>('/api/projects/:id/components', async (request) => {
-  const { id } = request.params;
-  return await fileService.listProjectComponents(id);
-});
-
-/**
- * Get component code in a project
- */
-server.get<{ Params: { id: string; componentName: string } }>('/api/projects/:id/components/:componentName/code', async (request) => {
+server.get<{ Params: { id: string; componentName: string } }>('/api/projects/:id/components/:componentName', async (request) => {
   const { id, componentName } = request.params;
   return await fileService.readProjectComponent(id, componentName);
-});
-
-/**
- * Get raw component source (plain text for direct rendering)
- */
-server.get<{ Params: { id: string; componentName: string } }>('/api/projects/:id/components/:componentName', async (request, reply) => {
-  const { id, componentName } = request.params;
-  const result = await fileService.readProjectComponent(id, componentName);
-
-  if (result.status === 'success' && result.content) {
-    reply.type('text/plain').send(result.content);
-  } else {
-    reply.code(404).send('Component not found');
-  }
 });
 
 /**
@@ -314,29 +235,9 @@ server.post<{
   reply.raw.end();
 });
 
-/**
- * Get Vite dev server info
- */
-server.get('/api/vite-server', async () => {
-  return {
-    status: 'success',
-    port: viteDevServerService.getPort(),
-    ready: viteDevServerService.isServerReady(),
-  };
-});
-
 // ============================================================================
 // Canvas Endpoints
 // ============================================================================
-
-/**
- * Get canvas state for a project
- */
-server.get<{ Params: { id: string } }>('/api/projects/:id/canvas', async (request) => {
-  const { id } = request.params;
-  const components = await projectService.getCanvas(id);
-  return { status: 'success', components };
-});
 
 /**
  * Save canvas state for a project
@@ -366,14 +267,6 @@ server.put<{ Params: { id: string }; Body: { components: any[] } }>('/api/projec
 // ============================================================================
 // Layout Endpoints
 // ============================================================================
-
-/**
- * List layouts in a project
- */
-server.get<{ Params: { id: string } }>('/api/projects/:id/layouts', async (request) => {
-  const { id } = request.params;
-  return await fileService.listLayouts(id);
-});
 
 /**
  * Get a layout definition
@@ -431,17 +324,11 @@ server.delete<{ Params: { id: string; layoutName: string } }>('/api/projects/:id
 
 const start = async () => {
   try {
-    // Start Vite dev server first
-    console.log('Starting Vite dev server...');
-    await viteDevServerService.start();
-
-    // Then start the API server
     await server.listen({ port: appConfig.port, host: '0.0.0.0' });
 
     console.log('');
     console.log('🚀 Component Builder API v2.0 (TypeScript)');
     console.log(`📍 Server running on http://localhost:${appConfig.port}`);
-    console.log(`🎨 Vite preview server on http://localhost:${viteDevServerService.getPort()}`);
     console.log(`🌍 Environment: ${appConfig.env}`);
     console.log(`🤖 AI Model: ${appConfig.api.modelName}`);
     console.log('💡 Make sure to set ANTHROPIC_API_KEY in .env file');

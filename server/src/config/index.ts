@@ -11,11 +11,9 @@ const envSchema = z.object({
   PORT: z.string().transform(Number).pipe(z.number().min(1000).max(65535)).default('5001'),
   ANTHROPIC_API_KEY: z.string().min(1, 'ANTHROPIC_API_KEY is required'),
   ALLOWED_ORIGINS: z.string().transform(str => str.split(',')).default('http://localhost:5173'),
-  COMPONENTS_DIR: z.string().default('./.components'),
-  PAGES_DIR: z.string().default('./.pages'),
   MODEL_NAME: z.string().default('claude-sonnet-4-5-20250929'),
   MAX_TOKENS: z.string().transform(Number).pipe(z.number().positive()).default('8192'),
-  MAX_ITERATIONS: z.string().transform(Number).pipe(z.number().positive()).default('5'),
+  MAX_ITERATIONS: z.string().transform(Number).pipe(z.number().positive()).default('10'),
   RATE_LIMIT_WINDOW_MS: z.string().transform(Number).pipe(z.number().positive()).default('60000'),
   RATE_LIMIT_MAX_REQUESTS: z.string().transform(Number).pipe(z.number().positive()).default('100'),
 });
@@ -48,11 +46,6 @@ export const appConfig = {
 
   cors: {
     allowedOrigins: config.ALLOWED_ORIGINS,
-  },
-
-  paths: {
-    components: config.COMPONENTS_DIR,
-    pages: config.PAGES_DIR,
   },
 
   rateLimit: {

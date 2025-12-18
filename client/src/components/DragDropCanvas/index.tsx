@@ -43,6 +43,7 @@ function DragDropCanvasInner() {
     setSelectedLayoutId,
     updateSize,
     updateNaturalSize,
+    clearSize,
     updatePosition,
     updateLayoutPosition,
     updateLayoutSize,
@@ -112,9 +113,11 @@ function DragDropCanvasInner() {
         onFix: (errorMessage: string, errorStack?: string) => {
           startFixing(item.componentName, { message: errorMessage, stack: errorStack });
         },
+        onClearSize: () => clearSize(item.id),
       },
       selected: selectedComponentId === item.id,
-      style: item.size ? { width: item.size.width, height: item.size.height } : undefined,
+      // Let React Flow auto-size nodes based on content
+      // Don't force dimensions from stored size
     }));
 
     // Layout nodes

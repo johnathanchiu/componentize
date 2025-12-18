@@ -1,6 +1,5 @@
 import type {
   APIResponse,
-  ListComponentsResponse,
   PageLayout,
   StreamEvent,
 } from '../types/index';
@@ -60,49 +59,6 @@ async function* postAndStream(
 // ============================================
 
 /**
- * Generate component with streaming progress (legacy global endpoint)
- */
-export async function* generateComponentStream(
-  prompt: string,
-  componentName: string
-): AsyncGenerator<StreamEvent> {
-  yield* postAndStream(`${API_BASE_URL}/generate-component-stream`, {
-    prompt,
-    componentName,
-  });
-}
-
-/**
- * Generate interaction with streaming progress
- */
-export async function* generateInteractionStream(
-  componentId: string,
-  componentName: string,
-  description: string,
-  eventType: string
-): AsyncGenerator<StreamEvent> {
-  yield* postAndStream(`${API_BASE_URL}/generate-interaction-stream`, {
-    componentId,
-    componentName,
-    description,
-    eventType,
-  });
-}
-
-/**
- * Edit component with streaming progress (legacy global endpoint)
- */
-export async function* editComponentStream(
-  componentName: string,
-  editDescription: string
-): AsyncGenerator<StreamEvent> {
-  yield* postAndStream(`${API_BASE_URL}/edit-component-stream`, {
-    componentName,
-    editDescription,
-  });
-}
-
-/**
  * Unified generation endpoint - handles creating and editing components
  * Agent decides whether to create 1 or multiple components based on request complexity
  */
@@ -128,18 +84,10 @@ export async function* editProjectComponentStream(
   yield* generateStream(projectId, editPrompt);
 }
 
-// Legacy aliases
-export const generateProjectComponentStream = generateStream;
-export const generatePageStream = generateStream;
 
 // ============================================
 // Non-Streaming API Functions
 // ============================================
-
-export async function listComponents(): Promise<ListComponentsResponse> {
-  const response = await fetch(`${API_BASE_URL}/list-components`);
-  return response.json();
-}
 
 export async function exportPageAsZip(
   pageName: string,
@@ -159,13 +107,8 @@ export async function exportPageAsZip(
   return response.blob();
 }
 
-export async function getComponentCode(componentName: string): Promise<any> {
-  const response = await fetch(`${API_BASE_URL}/get-component-code/${componentName}`);
-  return response.json();
-}
-
 export async function getProjectComponentCode(projectId: string, componentName: string): Promise<any> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/components/${componentName}/code`);
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/components/${componentName}`);
   return response.json();
 }
 
@@ -187,7 +130,16 @@ export async function listProjects(): Promise<{ status: string; projects: Projec
   return response.json();
 }
 
-export async function getProject(id: string): Promise<{ status: string; project?: Project; message?: string }> {
+export interface ProjectResponse {
+  status: string;
+  project?: Project;
+  components?: { name: string; filepath: string }[];
+  canvas?: CanvasComponentData[];
+  layouts?: LayoutDefinitionData[];
+  message?: string;
+}
+
+export async function getProject(id: string): Promise<ProjectResponse> {
   const response = await fetch(`${API_BASE_URL}/projects/${id}`);
   return response.json();
 }
@@ -196,11 +148,6 @@ export async function deleteProject(id: string): Promise<{ status: string; messa
   const response = await fetch(`${API_BASE_URL}/projects/${id}`, {
     method: 'DELETE',
   });
-  return response.json();
-}
-
-export async function listProjectComponents(projectId: string): Promise<ListComponentsResponse> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/components`);
   return response.json();
 }
 
@@ -221,11 +168,6 @@ export interface CanvasComponentData {
   position: { x: number; y: number };
   size?: { width: number; height: number };
   interactions?: any[];
-}
-
-export async function getProjectCanvas(projectId: string): Promise<{ status: string; components: CanvasComponentData[] }> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/canvas`);
-  return response.json();
 }
 
 export async function saveProjectCanvas(projectId: string, components: CanvasComponentData[]): Promise<{ status: string }> {
@@ -253,11 +195,6 @@ export interface CanvasLayoutData {
   layoutName: string;
   position: { x: number; y: number };
   size?: { width: number; height: number };
-}
-
-export async function listProjectLayouts(projectId: string): Promise<{ status: string; layouts?: string[]; message?: string }> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/layouts`);
-  return response.json();
 }
 
 export async function getProjectLayout(projectId: string, layoutName: string): Promise<{ status: string; layout?: LayoutDefinitionData; message?: string }> {

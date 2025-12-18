@@ -65,9 +65,9 @@ function createMockScope(): Record<string, unknown> {
     } else if (key.startsWith('use')) {
       // Hooks return tuples or values
       if (key === 'useState') {
-        scope[key] = (initial: unknown) => [initial, () => {}];
+        scope[key] = (initial: unknown) => [initial, () => { }];
       } else if (key === 'useSharedState') {
-        scope[key] = (key: string, initial: unknown) => [initial, () => {}];
+        scope[key] = (key: string, initial: unknown) => [initial, () => { }];
       } else {
         scope[key] = () => ({});
       }

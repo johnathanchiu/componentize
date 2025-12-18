@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type ComponentType, memo } from 'react';
-import { NodeResizer, type NodeProps } from '@xyflow/react';
+import { NodeResizeControl, type NodeProps } from '@xyflow/react';
 import { useGenerationStore } from '../../store/generationStore';
 import { useCmdKey } from '../../hooks/useCmdKey';
 import { loadComponent } from '../../lib/componentRenderer';
@@ -17,9 +17,10 @@ export interface ComponentNodeData extends Record<string, unknown> {
   onConnectionsDetected?: (source: string) => void;
   onNaturalSizeChange?: (size: Size) => void;
   onResize?: (width: number, height: number) => void;
+  onClearSize?: () => void; // Reset to natural size
 }
 
-function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNodeData }) {
+function ComponentNodeInner({ data, selected, width, height }: NodeProps & { data: ComponentNodeData }) {
   const [Component, setComponent] = useState<ComponentType | null>(null);
   const [componentError, setComponentError] = useState<{ message: string; stack?: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -108,7 +109,8 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
   }, [data.projectId, data.componentName, componentVersion]);
 
   // Monitor component size with ResizeObserver
-  // Captures natural size initially and updates node bounds when content changes dynamically
+  // Captures natural size initially and updates when content changes dynamically
+  // This keeps scale calculations accurate even after resize
   useEffect(() => {
     if (!componentRef.current) return;
 
@@ -128,13 +130,14 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
             data.onNaturalSizeChange?.(newSize);
             forceUpdate(n => n + 1);
           }
-          // If component hasn't been manually resized AND size changed significantly,
-          // update the node to match the new content size
-          else if (!data.hasExplicitSize && prevSize) {
-            const widthChanged = Math.abs(newSize.width - prevSize.width) > 2;
-            const heightChanged = Math.abs(newSize.height - prevSize.height) > 2;
-            if (widthChanged || heightChanged) {
-              // Update naturalSize to new intrinsic size
+          // Always update naturalSize when content size differs from stored naturalSize
+          // This keeps scale calculations accurate (targetSize / naturalSize)
+          // Compare with data.naturalSize, not prevSize, to detect drift
+          else if (data.naturalSize) {
+            const widthDrift = Math.abs(newSize.width - data.naturalSize.width) >= 2;
+            const heightDrift = Math.abs(newSize.height - data.naturalSize.height) >= 2;
+            if (widthDrift || heightDrift) {
+              // Update naturalSize to match current content
               data.onNaturalSizeChange?.(newSize);
               forceUpdate(n => n + 1);
             }
@@ -145,7 +148,7 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
 
     resizeObserver.observe(componentRef.current);
     return () => resizeObserver.disconnect();
-  }, [Component, data.naturalSize, data.hasExplicitSize, data.onNaturalSizeChange]);
+  }, [Component, data.naturalSize, data.onNaturalSizeChange]);
 
   const handleFixErrors = () => {
     if (!componentError || !data.onFix) return;
@@ -160,23 +163,30 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
     }
   };
 
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    // Double-click to reset size to natural
+    if (data.hasExplicitSize && data.onClearSize) {
+      e.stopPropagation();
+      console.log('Clearing size for:', data.componentName);
+      data.onClearSize();
+    }
+  };
+
   // Use stored naturalSize for scale calculation
   const referenceSize = data.naturalSize || intrinsicSizeRef.current;
 
   // Calculate aspect ratio for resize constraints (keeps proportions during drag)
   const aspectRatio = referenceSize ? referenceSize.width / referenceSize.height : undefined;
 
-  // Calculate scale factor (aspect ratio is maintained, so width/height ratios are equal)
+  // Calculate scale factor from natural size to target size
+  // When user resizes, component scales proportionally
   const scale = referenceSize && data.targetSize
-    ? data.targetSize.width / referenceSize.width
+    ? Math.min(data.targetSize.width / referenceSize.width, data.targetSize.height / referenceSize.height)
     : 1;
 
-  // Two-mode sizing system:
-  // Mode 1 (Natural Size): component renders at natural size, shrink-wrapped
-  // Mode 2 (Explicit Size): component scaled to cover container, overflow clipped
-  const wrapperClass = data.hasExplicitSize
-    ? 'w-full h-full overflow-hidden'  // Container clips scaled content
-    : 'inline-block';  // Shrink to content
+  // Always shrink-wrap to content - no overflow clipping
+  // Scaling is handled via CSS transform, not container sizing
+  const wrapperClass = 'inline-block';
 
   // Show bounds when selected OR when hovering with Cmd held
   const showBounds = selected || (isHovered && cmdKeyHeld);
@@ -185,7 +195,20 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
     <div
       className={`relative ${wrapperClass} ${cmdKeyHeld ? 'cursor-move' : ''}`}
       onClick={handleClick}
-      onMouseEnter={() => setIsHovered(true)}
+      onDoubleClick={handleDoubleClick}
+      onMouseEnter={() => {
+        setIsHovered(true);
+        console.log('Component Hover:', {
+          projectId: data.projectId,
+          componentName: data.componentName,
+          naturalSize: data.naturalSize,
+          targetSize: data.targetSize,
+          hasExplicitSize: data.hasExplicitSize,
+          intrinsicSize: intrinsicSizeRef.current,
+          scale,
+          nodeBounds: { width, height }, // React Flow measured node dimensions
+        });
+      }}
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Bounds outline - shown when selected or hovering with Cmd held */}
@@ -197,41 +220,23 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
         />
       )}
 
-      {/* Resize handle - shown when (selected OR hovered) AND Cmd/Ctrl is held */}
-      <NodeResizer
-        isVisible={showBounds && cmdKeyHeld}
-        minWidth={40}
-        minHeight={24}
-        keepAspectRatio={!!aspectRatio}
-        onResize={(_event, params) => {
-          // Normalize to maintain component's natural aspect ratio
-          // This ensures node bounds always match scaled component dimensions
-          if (referenceSize) {
-            const scaleFromWidth = params.width / referenceSize.width;
-            const scaleFromHeight = params.height / referenceSize.height;
-            // Use the larger scale to ensure component fills the drag target
-            const newScale = Math.max(scaleFromWidth, scaleFromHeight);
-            const newWidth = Math.round(referenceSize.width * newScale);
-            const newHeight = Math.round(referenceSize.height * newScale);
-            data.onResize?.(newWidth, newHeight);
-          } else {
+      {/* Resize handle - bottom-right only */}
+      {showBounds && cmdKeyHeld && (
+        <NodeResizeControl
+          position="bottom-right"
+          minWidth={40}
+          minHeight={24}
+          onResize={(_event, params) => {
             data.onResize?.(Math.round(params.width), Math.round(params.height));
-          }
-        }}
-        onResizeEnd={(_event, params) => {
-          // Final update with same normalization
-          if (referenceSize) {
-            const scaleFromWidth = params.width / referenceSize.width;
-            const scaleFromHeight = params.height / referenceSize.height;
-            const newScale = Math.max(scaleFromWidth, scaleFromHeight);
-            const newWidth = Math.round(referenceSize.width * newScale);
-            const newHeight = Math.round(referenceSize.height * newScale);
-            data.onResize?.(newWidth, newHeight);
-          } else {
-            data.onResize?.(Math.round(params.width), Math.round(params.height));
-          }
-        }}
-      />
+          }}
+          style={{
+            background: 'transparent',
+            border: 'none',
+          }}
+        >
+          <div className="w-3 h-3 bg-blue-500 rounded-sm cursor-se-resize" />
+        </NodeResizeControl>
+      )}
 
       {/* Component content - transparent background */}
       {loading && (
@@ -248,11 +253,7 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
             ref={componentRef}
             className="p-2"
             style={{
-              // Absolute positioning for scaled rendering
-              position: data.hasExplicitSize ? 'absolute' : undefined,
-              top: 0,
-              left: 0,
-              // CSS transform for scaling
+              // CSS transform for scaling (when user has resized)
               transformOrigin: 'top left',
               transform: scale !== 1 ? `scale(${scale})` : undefined,
               // When Cmd is held, disable pointer events so clicks go to React Flow for selection/dragging

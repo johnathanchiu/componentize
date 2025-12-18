@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { viteDevServerService } from './viteDevServerService';
+import { getWorkspacePath } from './workspace';
 
 export interface Project {
   id: string;
@@ -35,7 +35,7 @@ class ProjectService {
    * Get the path to the projects directory inside the workspace
    */
   private getProjectsDir(): string {
-    return path.join(viteDevServerService.getWorkspacePath(), 'projects');
+    return path.join(getWorkspacePath(), 'projects');
   }
 
   /**
@@ -137,29 +137,6 @@ class ProjectService {
       console.error(`Failed to delete project ${id}:`, err);
       throw err;
     }
-  }
-
-  /**
-   * Update a project's metadata
-   */
-  async updateProject(id: string, updates: Partial<Pick<Project, 'name'>>): Promise<Project | null> {
-    const project = await this.getProject(id);
-    if (!project) {
-      return null;
-    }
-
-    const updatedProject: Project = {
-      ...project,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
-
-    await fs.writeFile(
-      this.getProjectMetadataPath(id),
-      JSON.stringify(updatedProject, null, 2)
-    );
-
-    return updatedProject;
   }
 
   /**

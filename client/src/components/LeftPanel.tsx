@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type ComponentType } from 'react';
 import { Wand2, Loader2, X, Pencil, Wrench, RefreshCw, Trash2 } from 'lucide-react';
-import { generateStream, editProjectComponentStream, listProjectComponents, deleteProjectComponent } from '../lib/api';
+import { generateStream, editProjectComponentStream, getProject, deleteProjectComponent } from '../lib/api';
 import { useCanvasStore } from '../store/canvasStore';
 import { useGenerationStore } from '../store/generationStore';
 import { useProjectStore } from '../store/projectStore';
@@ -563,7 +563,7 @@ function LibraryTab() {
   const loadComponents = async () => {
     if (!currentProject) return;
     try {
-      const result = await listProjectComponents(currentProject.id);
+      const result = await getProject(currentProject.id);
       if (result.status === 'success' && result.components) {
         setAvailableComponents(result.components);
       }

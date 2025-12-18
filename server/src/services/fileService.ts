@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { appConfig } from '../config';
 import type { Component, ComponentResponse, ListComponentsResponse, LayoutDefinition } from '../../../shared/types';
 import { projectService } from './projectService';
 
@@ -19,29 +18,6 @@ export interface ListLayoutsResponse {
 }
 
 export class FileService {
-  private componentsPath: string;
-  private pagesPath: string;
-
-  constructor() {
-    this.componentsPath = path.join(process.cwd(), appConfig.paths.components);
-    this.pagesPath = path.join(process.cwd(), appConfig.paths.pages);
-    this.ensureDirectoriesExist();
-  }
-
-  private async ensureDirectoriesExist(): Promise<void> {
-    await fs.mkdir(this.componentsPath, { recursive: true });
-    await fs.mkdir(this.pagesPath, { recursive: true });
-  }
-
-  /**
-   * Get the base path for components - either global or project-scoped
-   */
-  private getComponentsBasePath(projectId?: string): string {
-    return projectId
-      ? projectService.getProjectDir(projectId)
-      : this.componentsPath;
-  }
-
   /**
    * Validate component name (PascalCase, starts with uppercase)
    */
@@ -87,38 +63,37 @@ export class FileService {
     return { valid: true };
   }
 
+  // ============================================
+  // Component Methods (Project-scoped)
+  // ============================================
+
   /**
-   * Create a new component file (global or project-scoped)
+   * Create a new component file in a project
    */
-  async createComponent(name: string, code: string, projectId?: string): Promise<ComponentResponse> {
-    // Validate name
+  async createProjectComponent(projectId: string, name: string, code: string): Promise<ComponentResponse> {
     const nameValidation = this.validateComponentName(name);
     if (!nameValidation.valid) {
       return { status: 'error', message: nameValidation.error! };
     }
 
-    // Validate code
     const codeValidation = this.validateComponentCode(code);
     if (!codeValidation.valid) {
       return { status: 'error', message: codeValidation.error! };
     }
 
-    const basePath = this.getComponentsBasePath(projectId);
+    const basePath = projectService.getProjectDir(projectId);
     const filepath = path.join(basePath, `${name}.tsx`);
 
-    // Check if component already exists
     try {
       await fs.access(filepath);
-      const location = projectId ? 'in this project' : '';
       return {
         status: 'error',
-        message: `Component '${name}' already exists${location ? ' ' + location : ''}. Use update instead.`
+        message: `Component '${name}' already exists in this project. Use update instead.`
       };
     } catch {
       // File doesn't exist, proceed with creation
     }
 
-    // Write component file
     try {
       await fs.writeFile(filepath, code, 'utf-8');
       return {
@@ -137,30 +112,26 @@ export class FileService {
   }
 
   /**
-   * Update an existing component file (global or project-scoped)
+   * Update an existing component file in a project
    */
-  async updateComponent(name: string, code: string, projectId?: string): Promise<ComponentResponse> {
-    // Validate code
+  async updateProjectComponent(projectId: string, name: string, code: string): Promise<ComponentResponse> {
     const codeValidation = this.validateComponentCode(code);
     if (!codeValidation.valid) {
       return { status: 'error', message: codeValidation.error! };
     }
 
-    const basePath = this.getComponentsBasePath(projectId);
+    const basePath = projectService.getProjectDir(projectId);
     const filepath = path.join(basePath, `${name}.tsx`);
 
-    // Check if component exists
     try {
       await fs.access(filepath);
     } catch {
-      const location = projectId ? 'in this project' : '';
       return {
         status: 'error',
-        message: `Component '${name}' not found${location ? ' ' + location : ''}. Use create instead.`
+        message: `Component '${name}' not found in this project. Use create instead.`
       };
     }
 
-    // Write updated component
     try {
       await fs.writeFile(filepath, code, 'utf-8');
       return {
@@ -179,10 +150,10 @@ export class FileService {
   }
 
   /**
-   * Read a component file (global or project-scoped)
+   * Read a component file from a project
    */
-  async readComponent(name: string, projectId?: string): Promise<ComponentResponse> {
-    const basePath = this.getComponentsBasePath(projectId);
+  async readProjectComponent(projectId: string, name: string): Promise<ComponentResponse> {
+    const basePath = projectService.getProjectDir(projectId);
     const filepath = path.join(basePath, `${name}.tsx`);
 
     try {
@@ -195,19 +166,18 @@ export class FileService {
         content
       };
     } catch {
-      const location = projectId ? ' in this project' : '';
       return {
         status: 'error',
-        message: `Component '${name}' not found${location}`
+        message: `Component '${name}' not found in this project`
       };
     }
   }
 
   /**
-   * List all components (global or project-scoped)
+   * List all components in a project
    */
-  async listComponents(projectId?: string): Promise<ListComponentsResponse> {
-    const basePath = this.getComponentsBasePath(projectId);
+  async listProjectComponents(projectId: string): Promise<ListComponentsResponse> {
+    const basePath = projectService.getProjectDir(projectId);
 
     try {
       const files = await fs.readdir(basePath);
@@ -224,7 +194,6 @@ export class FileService {
         components
       };
     } catch (error) {
-      // Return error instead of silently returning empty array
       return {
         status: 'error',
         message: `Failed to list components: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -234,10 +203,10 @@ export class FileService {
   }
 
   /**
-   * Delete a component file (global or project-scoped)
+   * Delete a component file from a project
    */
-  async deleteComponent(name: string, projectId?: string): Promise<ComponentResponse> {
-    const basePath = this.getComponentsBasePath(projectId);
+  async deleteProjectComponent(projectId: string, name: string): Promise<ComponentResponse> {
+    const basePath = projectService.getProjectDir(projectId);
     const filepath = path.join(basePath, `${name}.tsx`);
 
     try {
@@ -256,56 +225,16 @@ export class FileService {
   }
 
   /**
-   * Create a page file
+   * Check if a component exists in a project
    */
-  async createPage(name: string, code: string): Promise<ComponentResponse> {
-    const nameValidation = this.validateComponentName(name);
-    if (!nameValidation.valid) {
-      return { status: 'error', message: nameValidation.error! };
-    }
-
-    const filepath = path.join(this.pagesPath, `${name}.tsx`);
-
+  async componentExists(projectId: string, name: string): Promise<boolean> {
+    const filepath = path.join(projectService.getProjectDir(projectId), `${name}.tsx`);
     try {
-      await fs.writeFile(filepath, code, 'utf-8');
-      return {
-        status: 'success',
-        message: `Page '${name}' created successfully`,
-        component_name: name,
-        filepath,
-        content: code
-      };
-    } catch (error) {
-      return {
-        status: 'error',
-        message: `Failed to create page: ${error instanceof Error ? error.message : 'Unknown error'}`
-      };
+      await fs.access(filepath);
+      return true;
+    } catch {
+      return false;
     }
-  }
-
-  // ============================================
-  // Legacy aliases for backwards compatibility
-  // TODO: Remove these after updating all callers
-  // ============================================
-
-  async createProjectComponent(projectId: string, name: string, code: string): Promise<ComponentResponse> {
-    return this.createComponent(name, code, projectId);
-  }
-
-  async updateProjectComponent(projectId: string, name: string, code: string): Promise<ComponentResponse> {
-    return this.updateComponent(name, code, projectId);
-  }
-
-  async readProjectComponent(projectId: string, name: string): Promise<ComponentResponse> {
-    return this.readComponent(name, projectId);
-  }
-
-  async listProjectComponents(projectId: string): Promise<ListComponentsResponse> {
-    return this.listComponents(projectId);
-  }
-
-  async deleteProjectComponent(projectId: string, name: string): Promise<ComponentResponse> {
-    return this.deleteComponent(name, projectId);
   }
 
   // ============================================
@@ -452,7 +381,7 @@ export class FileService {
   }
 
   /**
-   * List all layouts for a project
+   * List all layouts for a project (names only)
    */
   async listLayouts(projectId: string): Promise<ListLayoutsResponse> {
     const layoutsPath = this.getLayoutsPath(projectId);
@@ -479,15 +408,28 @@ export class FileService {
   }
 
   /**
-   * Check if a component exists
+   * List all layouts with full definitions for a project
    */
-  async componentExists(projectId: string, name: string): Promise<boolean> {
-    const filepath = path.join(this.getComponentsBasePath(projectId), `${name}.tsx`);
+  async listAllLayouts(projectId: string): Promise<LayoutDefinition[]> {
+    const layoutsPath = this.getLayoutsPath(projectId);
+
     try {
-      await fs.access(filepath);
-      return true;
+      await this.ensureLayoutsDir(projectId);
+      const files = await fs.readdir(layoutsPath);
+      const layouts: LayoutDefinition[] = [];
+
+      for (const file of files.filter(f => f.endsWith('.json'))) {
+        try {
+          const content = await fs.readFile(path.join(layoutsPath, file), 'utf-8');
+          layouts.push(JSON.parse(content));
+        } catch {
+          // Skip invalid layout files
+        }
+      }
+
+      return layouts;
     } catch {
-      return false;
+      return [];
     }
   }
 }

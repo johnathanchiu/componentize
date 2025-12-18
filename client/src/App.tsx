@@ -12,10 +12,24 @@ import { useGenerationStore } from './store/generationStore';
 import { getProject } from './lib/api';
 
 function App() {
-  const { clearCanvas, loadCanvas, selectedComponentId, removeFromCanvas } = useCanvasStore();
-  const { currentProject, setCurrentProject } = useProjectStore();
+  const { clearCanvas, setCanvasDirectly, selectedComponentId, removeFromCanvas } = useCanvasStore();
+  const { currentProject, setCurrentProject, setAvailableComponents } = useProjectStore();
   const { setCurrentProjectId, clearStreamingEvents } = useGenerationStore();
   const [isLoading, setIsLoading] = useState(true);
+
+  // Helper to load project with all data
+  const loadProjectData = async (projectId: string) => {
+    const result = await getProject(projectId);
+    if (result.status === 'success' && result.project) {
+      setCurrentProject(result.project);
+      setCurrentProjectId(projectId);
+      // Use canvas data from consolidated response
+      setCanvasDirectly(result.canvas || [], projectId);
+      // Set available components from consolidated response
+      setAvailableComponents(result.components || []);
+    }
+    return result;
+  };
 
   // Read project ID from URL on mount
   useEffect(() => {
@@ -23,15 +37,7 @@ function App() {
     const projectId = params.get('project');
 
     if (projectId) {
-      // Load project from API
-      getProject(projectId).then((result) => {
-        if (result.status === 'success' && result.project) {
-          setCurrentProject(result.project);
-          setCurrentProjectId(projectId); // Sync generation store for session persistence
-          loadCanvas(projectId); // Load saved canvas for this project
-        }
-        setIsLoading(false);
-      });
+      loadProjectData(projectId).finally(() => setIsLoading(false));
     } else {
       setIsLoading(false);
     }
@@ -39,9 +45,7 @@ function App() {
 
   // Update URL when project changes
   const handleOpenProject = (project: Project) => {
-    setCurrentProject(project);
-    setCurrentProjectId(project.id); // Sync generation store for session persistence
-    loadCanvas(project.id); // Load saved canvas for this project
+    loadProjectData(project.id);
     // Update URL without reload
     window.history.pushState({}, '', `?project=${project.id}`);
   };
@@ -62,13 +66,7 @@ function App() {
       const projectId = params.get('project');
 
       if (projectId) {
-        getProject(projectId).then((result) => {
-          if (result.status === 'success' && result.project) {
-            setCurrentProject(result.project);
-            setCurrentProjectId(projectId);
-            loadCanvas(projectId);
-          }
-        });
+        loadProjectData(projectId);
       } else {
         setCurrentProject(null);
         setCurrentProjectId(null);

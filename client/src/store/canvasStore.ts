@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { CanvasComponent, Interaction, CanvasLayout } from '../types/index';
-import { getProjectCanvas, saveProjectCanvas } from '../lib/api';
+import { saveProjectCanvas } from '../lib/api';
 import type { StateConnection } from '../lib/sharedStore';
 
 // Per-project debounce for saving canvas (avoids cross-project collisions)
@@ -29,13 +29,14 @@ interface CanvasStore {
   canvasComponents: CanvasComponent[];
   isLoadingCanvas: boolean;
   canvasLoadError: string | null;
+  setCanvasDirectly: (components: CanvasComponent[], projectId: string) => void;
   addToCanvas: (component: CanvasComponent) => void;
   updatePosition: (id: string, x: number, y: number) => void;
   updateSize: (id: string, width: number, height: number, x?: number, y?: number) => void;
   updateNaturalSize: (id: string, width: number, height: number) => void;
+  clearSize: (id: string) => void;
   removeFromCanvas: (id: string) => void;
   clearCanvas: () => void;
-  loadCanvas: (projectId: string) => Promise<void>;
 
   // Canvas layouts
   canvasLayouts: CanvasLayout[];
@@ -75,30 +76,13 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
   isLoadingCanvas: false,
   canvasLoadError: null,
 
-  loadCanvas: async (projectId) => {
-    set({ isLoadingCanvas: true, canvasLoadError: null });
-    try {
-      const result = await getProjectCanvas(projectId);
-      if (result.status === 'success') {
-        set({
-          canvasComponents: result.components,
-          currentProjectId: projectId,
-          isLoadingCanvas: false,
-        });
-      } else {
-        throw new Error('Failed to load canvas');
-      }
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : 'Unknown error loading canvas';
-      console.error('Failed to load canvas:', e);
-      set({
-        canvasLoadError: errorMessage,
-        canvasComponents: [],
-        currentProjectId: projectId,
-        isLoadingCanvas: false,
-      });
-    }
-  },
+  setCanvasDirectly: (components, projectId) =>
+    set({
+      canvasComponents: components,
+      currentProjectId: projectId,
+      isLoadingCanvas: false,
+      canvasLoadError: null,
+    }),
 
   addToCanvas: (component) =>
     set((state) => {
@@ -144,6 +128,23 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
         if (comp.id === id) {
           // Update naturalSize (allows dynamic content changes to update node bounds)
           return { ...comp, naturalSize: { width, height } };
+        }
+        return comp;
+      });
+      if (state.currentProjectId) {
+        debouncedSave(state.currentProjectId, newComponents);
+      }
+      return { canvasComponents: newComponents };
+    }),
+
+  // Clear explicit size - component will render at natural size
+  clearSize: (id) =>
+    set((state) => {
+      const newComponents = state.canvasComponents.map((comp) => {
+        if (comp.id === id) {
+          // Remove size to let component render naturally
+          const { size, ...rest } = comp;
+          return rest;
         }
         return comp;
       });
