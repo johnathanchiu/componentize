@@ -112,59 +112,6 @@ export const COMPONENT_TOOLS: Tool[] = [
     }
   },
   {
-    name: 'create_layout',
-    description: 'Compose multiple components using layout primitives (Stack, Flex, Grid, Container). Use this when components need to be arranged together (e.g., 3 cards in a row, hero with stacked content). Components must be created first before adding them to a layout.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        name: {
-          type: 'string',
-          description: 'Layout name in PascalCase (e.g., PricingSection, HeroArea)'
-        },
-        layout: {
-          type: 'object',
-          description: 'Layout definition using primitives',
-          properties: {
-            type: {
-              type: 'string',
-              enum: ['Stack', 'Flex', 'Grid', 'Container'],
-              description: 'The layout primitive to use'
-            },
-            props: {
-              type: 'object',
-              description: 'Props for the layout primitive (gap, align, justify, direction, etc.)'
-            },
-            children: {
-              type: 'array',
-              description: 'Child elements - component references or nested layouts',
-              items: {
-                type: 'object'
-              }
-            }
-          },
-          required: ['type', 'children']
-        },
-        position: {
-          type: 'object',
-          description: 'Position on canvas for the layout',
-          properties: {
-            x: { type: 'number' },
-            y: { type: 'number' }
-          }
-        },
-        size: {
-          type: 'object',
-          description: 'Size of the layout container',
-          properties: {
-            width: { type: 'number' },
-            height: { type: 'number' }
-          }
-        }
-      },
-      required: ['name', 'layout']
-    }
-  },
-  {
     name: 'manage_todos',
     description: 'Manage your task list. Use this to plan work, track progress, and show users what you are doing. Call this BEFORE starting work to create tasks, and after completing each task to mark it done.',
     input_schema: {

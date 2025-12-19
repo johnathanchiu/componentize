@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, type ComponentType, memo } from 'react';
 import { NodeResizeControl, type NodeProps } from '@xyflow/react';
 import { useGenerationStore } from '../../store/generationStore';
 import { useCmdKey } from '../../hooks/useCmdKey';
-import { loadComponent } from '../../lib/componentRenderer';
+import { compileComponent } from '../../lib/componentRenderer';
 import { ComponentErrorBoundary } from './ErrorBoundary';
 import { ErrorOverlay } from './ErrorOverlay';
 import type { Size } from '../../types/index';
@@ -87,14 +87,15 @@ function ComponentNodeInner({ data, selected, width, height }: NodeProps & { dat
     fetch(`/api/projects/${data.projectId}/components/${data.componentName}`, {
       signal: abortController.signal,
     })
-      .then((res) => res.text())
+      .then((res) => {
+        if (!res.ok) throw new Error(`Failed to load: ${res.statusText}`);
+        return res.text();
+      })
       .then((source) => {
         if (abortController.signal.aborted) return;
         connectionsCallbackRef.current?.(source);
-        return loadComponent(data.projectId, data.componentName);
-      })
-      .then((comp) => {
-        if (abortController.signal.aborted || !comp) return;
+        // Compile directly - no second fetch needed
+        const comp = compileComponent(source, data.componentName);
         setComponent(() => comp);
         setLoading(false);
       })
@@ -120,7 +121,6 @@ function ComponentNodeInner({ data, selected, width, height }: NodeProps & { dat
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0) {
           const newSize = { width: Math.round(width), height: Math.round(height) };
-          const prevSize = intrinsicSizeRef.current;
 
           // Update local ref for current measurement
           intrinsicSizeRef.current = newSize;
@@ -175,25 +175,29 @@ function ComponentNodeInner({ data, selected, width, height }: NodeProps & { dat
   // Use stored naturalSize for scale calculation
   const referenceSize = data.naturalSize || intrinsicSizeRef.current;
 
-  // Calculate aspect ratio for resize constraints (keeps proportions during drag)
-  const aspectRatio = referenceSize ? referenceSize.width / referenceSize.height : undefined;
-
   // Calculate scale factor from natural size to target size
   // When user resizes, component scales proportionally
   const scale = referenceSize && data.targetSize
     ? Math.min(data.targetSize.width / referenceSize.width, data.targetSize.height / referenceSize.height)
     : 1;
 
-  // Always shrink-wrap to content - no overflow clipping
-  // Scaling is handled via CSS transform, not container sizing
-  const wrapperClass = 'inline-block';
-
   // Show bounds when selected OR when hovering with Cmd held
   const showBounds = selected || (isHovered && cmdKeyHeld);
 
+  // When user has set explicit size, use fixed container dimensions
+  // Otherwise, shrink-wrap to content (inline-block)
+  const containerStyle: React.CSSProperties = data.targetSize
+    ? {
+        width: data.targetSize.width,
+        height: data.targetSize.height,
+        overflow: 'hidden',
+      }
+    : {};
+
   return (
     <div
-      className={`relative ${wrapperClass} ${cmdKeyHeld ? 'cursor-move' : ''}`}
+      className={`relative ${data.targetSize ? '' : 'inline-block'} ${cmdKeyHeld ? 'cursor-move' : ''}`}
+      style={containerStyle}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onMouseEnter={() => {

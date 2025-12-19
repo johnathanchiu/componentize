@@ -15,19 +15,6 @@ export interface CanvasComponent {
   componentName: string;
   position: { x: number; y: number };
   size?: { width: number; height: number };
-  interactions?: any[];
-}
-
-export interface CanvasLayout {
-  id: string;
-  layoutName: string;
-  position: { x: number; y: number };
-  size?: { width: number; height: number };
-}
-
-export interface CanvasState {
-  components: CanvasComponent[];
-  layouts: CanvasLayout[];
 }
 
 class ProjectService {
@@ -53,8 +40,14 @@ class ProjectService {
   }
 
   /**
+   * Get the path to a project's canvas file
+   */
+  private getCanvasPath(projectId: string): string {
+    return path.join(this.getProjectDir(projectId), 'canvas.json');
+  }
+
+  /**
    * Create a new project
-   * Just creates a folder and metadata file - instant operation
    */
   async createProject(name: string): Promise<Project> {
     const id = uuidv4();
@@ -73,10 +66,7 @@ class ProjectService {
     await fs.mkdir(projectDir, { recursive: true });
 
     // Write metadata
-    await fs.writeFile(
-      this.getProjectMetadataPath(id),
-      JSON.stringify(project, null, 2)
-    );
+    await fs.writeFile(this.getProjectMetadataPath(id), JSON.stringify(project, null, 2));
 
     return project;
   }
@@ -114,13 +104,8 @@ class ProjectService {
       }
 
       // Sort by creation date, newest first
-      return projects.sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-    } catch (error) {
-      // Log error instead of silently returning empty
-      // TODO: Consider returning a response wrapper with error status
-      console.error('Failed to list projects:', error);
+      return projects.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } catch {
       return [];
     }
   }
@@ -130,20 +115,7 @@ class ProjectService {
    */
   async deleteProject(id: string): Promise<void> {
     const projectDir = this.getProjectDir(id);
-
-    try {
-      await fs.rm(projectDir, { recursive: true, force: true });
-    } catch (err) {
-      console.error(`Failed to delete project ${id}:`, err);
-      throw err;
-    }
-  }
-
-  /**
-   * Get the path to a project's canvas file
-   */
-  private getCanvasPath(projectId: string): string {
-    return path.join(this.getProjectDir(projectId), 'canvas.json');
+    await fs.rm(projectDir, { recursive: true, force: true });
   }
 
   /**
@@ -153,7 +125,13 @@ class ProjectService {
     try {
       const canvasPath = this.getCanvasPath(projectId);
       const content = await fs.readFile(canvasPath, 'utf-8');
-      return JSON.parse(content) as CanvasComponent[];
+      const parsed = JSON.parse(content);
+
+      // Handle both old format (array) and new format (object with components)
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      return parsed.components || [];
     } catch {
       return [];
     }
@@ -168,49 +146,14 @@ class ProjectService {
   }
 
   /**
-   * Get the canvas state with layouts for a project
-   * Handles migration from old format (array) to new format (object with components and layouts)
-   */
-  async getCanvasWithLayouts(projectId: string): Promise<CanvasState> {
-    try {
-      const canvasPath = this.getCanvasPath(projectId);
-      const content = await fs.readFile(canvasPath, 'utf-8');
-      const parsed = JSON.parse(content);
-
-      // Handle old format (array of components) vs new format (object with components and layouts)
-      if (Array.isArray(parsed)) {
-        return { components: parsed, layouts: [] };
-      }
-
-      return {
-        components: parsed.components || [],
-        layouts: parsed.layouts || []
-      };
-    } catch {
-      return { components: [], layouts: [] };
-    }
-  }
-
-  /**
-   * Save the canvas state with layouts for a project
-   */
-  async saveCanvasWithLayouts(projectId: string, state: CanvasState): Promise<void> {
-    const canvasPath = this.getCanvasPath(projectId);
-    await fs.writeFile(canvasPath, JSON.stringify(state, null, 2));
-  }
-
-  /**
    * List all component names in a project
-   * Components are stored as {name}.tsx files in the project directory
    */
   async listComponents(projectId: string): Promise<string[]> {
     const projectDir = this.getProjectDir(projectId);
 
     try {
       const entries = await fs.readdir(projectDir);
-      return entries
-        .filter(f => f.endsWith('.tsx'))
-        .map(f => f.replace('.tsx', ''));
+      return entries.filter((f) => f.endsWith('.tsx')).map((f) => f.replace('.tsx', ''));
     } catch {
       return [];
     }

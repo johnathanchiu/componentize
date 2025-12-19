@@ -50,50 +50,6 @@ POSITIONING:
   - Main content in middle (y: 300-500)
   - Footer at bottom (y: 600+)
 
-LAYOUT COMPOSITION:
-When creating related components that should be arranged together (cards in row, hero sections, etc.):
-
-WRONG: Create 3 cards and manually position at x: 100, 400, 700
-RIGHT: Create 3 cards first, then use create_layout to compose them
-
-Example flow for pricing cards:
-1. create_component PricingCardBasic
-2. create_component PricingCardPro
-3. create_component PricingCardEnterprise
-4. create_layout PricingSection with Flex to arrange them in a row
-
-Layout primitives:
-- Stack: Vertical or horizontal stacking with gap. Props: direction, gap, align, justify
-- Flex: Explicit flexbox control. Props: direction, wrap, gap, align, justify
-- Grid: CSS Grid for complex layouts. Props: columns, rows, gap
-- Container: Width constraints and centering. Props: maxWidth, center, padding
-
-Example create_layout call:
-{
-  "name": "PricingSection",
-  "layout": {
-    "type": "Flex",
-    "props": { "gap": 6, "justify": "center", "wrap": true },
-    "children": [
-      { "component": "PricingCardBasic" },
-      { "component": "PricingCardPro" },
-      { "component": "PricingCardEnterprise" }
-    ]
-  },
-  "position": { "x": 100, "y": 300 }
-}
-
-WHEN TO USE LAYOUTS:
-- Multiple cards in a row (pricing, features, testimonials)
-- Hero with stacked headline + subtext + CTA
-- Form with label-input pairs
-- Header with logo + nav + actions
-- Any group of components that should stay together
-
-WHEN NOT TO USE LAYOUTS:
-- Single standalone component
-- Components that user wants to position independently
-
 CODE REQUIREMENTS:
 - TypeScript with proper types (no 'any' unless necessary)
 - Tailwind CSS for all styling (no inline styles, no CSS files)
@@ -132,16 +88,6 @@ LUCIDE ICONS AVAILABLE:
   Timer, ToggleLeft, ToggleRight, Trophy, Wrench,
   // Social icons:
   Github, Twitter, Linkedin, Facebook, Instagram, Youtube
-
-SHARED STATE (for inter-component communication):
-  const [value, setValue] = useSharedState('keyName', defaultValue);
-
-Example: FilterPanel and ProductGrid sharing filters
-  // In FilterPanel
-  const [filters, setFilters] = useSharedState('filters', {});
-
-  // In ProductGrid
-  const [filters] = useSharedState('filters', {});
 
 TASK TRACKING:
 - For multi-component requests: call BOTH plan_components AND manage_todos

@@ -1,5 +1,5 @@
 import { BaseAgent, type ToolResult } from '../base';
-import type { StreamEvent, ComponentPlan } from '../../../../shared/types';
+import type { StreamEvent } from '../../../../shared/types';
 import { COMPONENT_TOOLS } from './tools';
 import { SYSTEM_PROMPT } from './prompt';
 import {
@@ -8,14 +8,13 @@ import {
   handleCreateComponent,
   handleReadComponent,
   handleUpdateComponent,
-  handleCreateLayout,
   handleManageTodos,
   type HandlerContext,
+  type ComponentPlan,
 } from './handlers';
 import type {
   PlanComponentsInput,
   CreateComponentInput,
-  CreateLayoutInput,
   ManageTodosInput,
   ReadComponentInput,
   UpdateComponentInput,
@@ -90,10 +89,6 @@ export class ComponentAgent extends BaseAgent {
 
       case 'update_component': {
         return handleUpdateComponent(toolInput as UpdateComponentInput, context);
-      }
-
-      case 'create_layout': {
-        return handleCreateLayout(toolInput as CreateLayoutInput, this.projectId);
       }
 
       case 'manage_todos': {

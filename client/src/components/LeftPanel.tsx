@@ -9,7 +9,7 @@ import { ResizeHandle } from './ResizeHandle';
 import { StatusOrb } from './StatusOrb';
 import { Timeline } from './Timeline';
 import { loadComponent } from '../lib/componentRenderer';
-import type { Size, AgentTodo } from '../types/index';
+import type { Size } from '../types/index';
 
 // ============================================
 // CreateTab - Component generation/editing
@@ -564,9 +564,7 @@ function LibraryTab() {
     if (!currentProject) return;
     try {
       const result = await getProject(currentProject.id);
-      if (result.status === 'success' && result.components) {
-        setAvailableComponents(result.components);
-      }
+      setAvailableComponents(result.components);
     } catch (err) {
       console.error('Failed to load components:', err);
     }
@@ -577,12 +575,8 @@ function LibraryTab() {
     if (!window.confirm(`Delete "${componentName}"? This cannot be undone.`)) return;
 
     try {
-      const result = await deleteProjectComponent(currentProject.id, componentName);
-      if (result.status === 'success') {
-        removeAvailableComponent(componentName);
-      } else {
-        console.error('Failed to delete component:', result.message);
-      }
+      await deleteProjectComponent(currentProject.id, componentName);
+      removeAvailableComponent(componentName);
     } catch (err) {
       console.error('Failed to delete component:', err);
     }

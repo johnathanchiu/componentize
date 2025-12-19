@@ -2,12 +2,13 @@
   "name": "componentize-server",
   "version": "1.0.0",
   "description": "TypeScript backend for Componentize",
-  "main": "dist/server.js",
+  "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
-    "type-check": "tsc --noEmit"
+    "start": "node dist/index.js",
+    "type-check": "tsc --noEmit",
+    "benchmark": "tsx scripts/benchmark.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

@@ -21,9 +21,7 @@ export function ProjectsPage({ onOpenProject }: ProjectsPageProps) {
       setIsLoadingProjects(true);
       try {
         const response = await listProjects();
-        if (response.status === 'success') {
-          setProjects(response.projects);
-        }
+        setProjects(response.projects);
       } catch (error) {
         console.error('Failed to fetch projects:', error);
       } finally {
@@ -40,13 +38,11 @@ export function ProjectsPage({ onOpenProject }: ProjectsPageProps) {
     setIsCreating(true);
     try {
       const response = await createProject(newProjectName.trim());
-      if (response.status === 'success' && response.project) {
-        addProject(response.project);
-        setShowCreateModal(false);
-        setNewProjectName('');
-        // Navigate to the new project
-        onOpenProject(response.project);
-      }
+      addProject(response.project);
+      setShowCreateModal(false);
+      setNewProjectName('');
+      // Navigate to the new project
+      onOpenProject(response.project);
     } catch (error) {
       console.error('Failed to create project:', error);
     } finally {

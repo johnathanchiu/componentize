@@ -1,13 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { ToolResult } from '../base';
 import { fileService } from '../../services/fileService';
-import { projectService } from '../../services/projectService';
+import { projectService, CanvasComponent } from '../../services/projectService';
 import { validateComponent } from '../validator';
-import type { CanvasComponent, ComponentPlan, LayoutDefinition, CanvasLayout, LayoutChild } from '../../../../shared/types';
 import type {
   PlanComponentsInput,
   CreateComponentInput,
-  CreateLayoutInput,
   ManageTodosInput,
   ReadComponentInput,
   UpdateComponentInput,
@@ -40,24 +38,6 @@ export function validateComponentSize(name: string, code: string): string | null
       `Try again with a simpler component under ${MAX_COMPONENT_LINES} lines.`;
   }
   return null;
-}
-
-/**
- * Extract all component names from a layout definition (recursive)
- */
-export function extractComponentNamesFromLayout(layout: LayoutDefinition): string[] {
-  const names: string[] = [];
-
-  const traverse = (child: LayoutChild) => {
-    if ('component' in child) {
-      names.push(child.component);
-    } else if ('children' in child) {
-      child.children.forEach(traverse);
-    }
-  };
-
-  layout.children.forEach(traverse);
-  return [...new Set(names)];
 }
 
 /**
@@ -107,6 +87,13 @@ export interface HandlerContext {
   pendingPlan: ComponentPlan[];
   createdComponents: string[];
   validationFailures: Map<string, number>;
+}
+
+export interface ComponentPlan {
+  name: string;
+  description: string;
+  position: Position;
+  size?: Size;
 }
 
 /**
@@ -271,61 +258,6 @@ export async function handleUpdateComponent(
   const result = await fileService.updateProjectComponent(projectId, name, code);
   validationFailures.delete(name);
   return { ...result, component_name: result.component_name };
-}
-
-/**
- * Handle create_layout tool
- */
-export async function handleCreateLayout(
-  input: CreateLayoutInput,
-  projectId: string
-): Promise<ToolResult> {
-  const { name, layout } = input;
-  const position = input.position ?? DEFAULT_POSITION;
-  const size = input.size ?? { width: 800, height: 400 };
-
-  const componentNames = extractComponentNamesFromLayout(layout);
-  const missingComponents: string[] = [];
-
-  for (const compName of componentNames) {
-    const exists = await fileService.componentExists(projectId, compName);
-    if (!exists) {
-      missingComponents.push(compName);
-    }
-  }
-
-  if (missingComponents.length > 0) {
-    return {
-      status: 'error',
-      message: `Components not found: ${missingComponents.join(', ')}. Create them first before adding to a layout.`
-    };
-  }
-
-  const result = await fileService.createLayout(projectId, name, layout);
-
-  if (result.status !== 'success') {
-    return { status: 'error', message: result.message };
-  }
-
-  const canvasLayout: CanvasLayout = {
-    id: uuidv4(),
-    layoutName: name,
-    position,
-    size
-  };
-
-  const existingCanvas = await projectService.getCanvasWithLayouts(projectId);
-  existingCanvas.layouts = existingCanvas.layouts || [];
-  existingCanvas.layouts.push(canvasLayout);
-  await projectService.saveCanvasWithLayouts(projectId, existingCanvas);
-
-  return {
-    status: 'success',
-    message: `Created layout "${name}" with ${componentNames.length} components`,
-    layout_name: name,
-    canvasLayout,
-    componentCount: componentNames.length
-  };
 }
 
 /**

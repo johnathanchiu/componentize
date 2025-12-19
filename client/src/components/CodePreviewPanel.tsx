@@ -59,11 +59,7 @@ export function CodePreviewPanel() {
 
     try {
       const result = await getProjectComponentCode(currentProject.id, editingComponentName);
-      if (result.status === 'success') {
-        setCode(result.content || '');
-      } else {
-        setError(result.message || 'Failed to load code');
-      }
+      setCode(result);
     } catch (err) {
       setError('Failed to load component code');
     } finally {

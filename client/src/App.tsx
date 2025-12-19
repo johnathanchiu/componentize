@@ -19,16 +19,19 @@ function App() {
 
   // Helper to load project with all data
   const loadProjectData = async (projectId: string) => {
-    const result = await getProject(projectId);
-    if (result.status === 'success' && result.project) {
+    try {
+      const result = await getProject(projectId);
       setCurrentProject(result.project);
       setCurrentProjectId(projectId);
       // Use canvas data from consolidated response
       setCanvasDirectly(result.canvas || [], projectId);
       // Set available components from consolidated response
       setAvailableComponents(result.components || []);
+      return result;
+    } catch (error) {
+      console.error('Failed to load project:', error);
+      return null;
     }
-    return result;
   };
 
   // Read project ID from URL on mount

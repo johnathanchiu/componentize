@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { CanvasComponent, Interaction, CanvasLayout } from '../types/index';
+import type { CanvasComponent } from '../types/index';
 import { saveProjectCanvas } from '../lib/api';
 import type { StateConnection } from '../lib/sharedStore';
 
@@ -38,23 +38,9 @@ interface CanvasStore {
   removeFromCanvas: (id: string) => void;
   clearCanvas: () => void;
 
-  // Canvas layouts
-  canvasLayouts: CanvasLayout[];
-  addLayout: (layout: CanvasLayout) => void;
-  updateLayoutPosition: (id: string, x: number, y: number) => void;
-  updateLayoutSize: (id: string, width: number, height: number) => void;
-  removeLayout: (id: string) => void;
-
-  // Selection (can be component or layout)
+  // Selection
   selectedComponentId: string | null;
-  selectedLayoutId: string | null;
   setSelectedComponentId: (id: string | null) => void;
-  setSelectedLayoutId: (id: string | null) => void;
-
-  // Interactions
-  addInteraction: (componentId: string, interaction: Interaction) => void;
-  removeInteraction: (componentId: string, interactionId: string) => void;
-  updateInteraction: (componentId: string, interactionId: string, updates: Partial<Interaction>) => void;
 
   // State connections (for visual connection lines)
   stateConnections: StateConnection[];
@@ -126,7 +112,6 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
     set((state) => {
       const newComponents = state.canvasComponents.map((comp) => {
         if (comp.id === id) {
-          // Update naturalSize (allows dynamic content changes to update node bounds)
           return { ...comp, naturalSize: { width, height } };
         }
         return comp;
@@ -137,12 +122,10 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
       return { canvasComponents: newComponents };
     }),
 
-  // Clear explicit size - component will render at natural size
   clearSize: (id) =>
     set((state) => {
       const newComponents = state.canvasComponents.map((comp) => {
         if (comp.id === id) {
-          // Remove size to let component render naturally
           const { size, ...rest } = comp;
           return rest;
         }
@@ -168,78 +151,11 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
       };
     }),
 
-  clearCanvas: () => set({ canvasComponents: [], canvasLayouts: [] }),
-
-  // Canvas layouts
-  canvasLayouts: [],
-
-  addLayout: (layout) =>
-    set((state) => {
-      const newLayouts = [...state.canvasLayouts, layout];
-      // TODO: Add debounced save for layouts when we have full canvas state persistence
-      return { canvasLayouts: newLayouts };
-    }),
-
-  updateLayoutPosition: (id, x, y) =>
-    set((state) => {
-      const newLayouts = state.canvasLayouts.map((layout) =>
-        layout.id === id ? { ...layout, position: { x, y } } : layout
-      );
-      return { canvasLayouts: newLayouts };
-    }),
-
-  updateLayoutSize: (id, width, height) =>
-    set((state) => {
-      const newLayouts = state.canvasLayouts.map((layout) =>
-        layout.id === id ? { ...layout, size: { width, height } } : layout
-      );
-      return { canvasLayouts: newLayouts };
-    }),
-
-  removeLayout: (id) =>
-    set((state) => ({
-      canvasLayouts: state.canvasLayouts.filter((layout) => layout.id !== id),
-      selectedLayoutId: state.selectedLayoutId === id ? null : state.selectedLayoutId,
-    })),
+  clearCanvas: () => set({ canvasComponents: [] }),
 
   // Selection
   selectedComponentId: null,
-  selectedLayoutId: null,
-  setSelectedComponentId: (id) => set({ selectedComponentId: id, selectedLayoutId: null }),
-  setSelectedLayoutId: (id) => set({ selectedLayoutId: id, selectedComponentId: null }),
-
-  // Interactions
-  addInteraction: (componentId, interaction) =>
-    set((state) => ({
-      canvasComponents: state.canvasComponents.map((comp) =>
-        comp.id === componentId
-          ? { ...comp, interactions: [...(comp.interactions || []), interaction] }
-          : comp
-      ),
-    })),
-
-  removeInteraction: (componentId, interactionId) =>
-    set((state) => ({
-      canvasComponents: state.canvasComponents.map((comp) =>
-        comp.id === componentId
-          ? { ...comp, interactions: comp.interactions?.filter((i) => i.id !== interactionId) }
-          : comp
-      ),
-    })),
-
-  updateInteraction: (componentId, interactionId, updates) =>
-    set((state) => ({
-      canvasComponents: state.canvasComponents.map((comp) =>
-        comp.id === componentId
-          ? {
-            ...comp,
-            interactions: comp.interactions?.map((i) =>
-              i.id === interactionId ? { ...i, ...updates } : i
-            ),
-          }
-          : comp
-      ),
-    })),
+  setSelectedComponentId: (id) => set({ selectedComponentId: id }),
 
   // State connections
   stateConnections: [],

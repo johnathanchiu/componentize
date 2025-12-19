@@ -1,8 +1,4 @@
-import type {
-  APIResponse,
-  PageLayout,
-  StreamEvent,
-} from '../types/index';
+import type { PageLayout, StreamEvent } from '../types/index';
 import type { Project } from '../store/projectStore';
 import { config } from '../config';
 
@@ -60,20 +56,18 @@ async function* postAndStream(
 
 /**
  * Unified generation endpoint - handles creating and editing components
- * Agent decides whether to create 1 or multiple components based on request complexity
  */
 export async function* generateStream(
   projectId: string,
   prompt: string
 ): AsyncGenerator<StreamEvent> {
-  yield* postAndStream(`${API_BASE_URL}/projects/${projectId}/generate-stream`, {
+  yield* postAndStream(`${API_BASE_URL}/projects/${projectId}/generate`, {
     prompt,
   });
 }
 
 /**
  * Edit component in a project with streaming progress
- * Routes through the unified endpoint with an edit prompt
  */
 export async function* editProjectComponentStream(
   projectId: string,
@@ -84,7 +78,6 @@ export async function* editProjectComponentStream(
   yield* generateStream(projectId, editPrompt);
 }
 
-
 // ============================================
 // Non-Streaming API Functions
 // ============================================
@@ -94,7 +87,7 @@ export async function exportPageAsZip(
   layout: PageLayout,
   projectId: string
 ): Promise<Blob> {
-  const response = await fetch(`${API_BASE_URL}/export-page`, {
+  const response = await fetch(`${API_BASE_URL}/export`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pageName, layout, projectId }),
@@ -107,54 +100,98 @@ export async function exportPageAsZip(
   return response.blob();
 }
 
-export async function getProjectComponentCode(projectId: string, componentName: string): Promise<any> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/components/${componentName}`);
-  return response.json();
+/**
+ * Get component code as plain text
+ */
+export async function getProjectComponentCode(
+  projectId: string,
+  componentName: string
+): Promise<string> {
+  const response = await fetch(
+    `${API_BASE_URL}/projects/${projectId}/components/${componentName}`
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch component: ${componentName}`);
+  }
+  return response.text();
 }
 
 // ============================================
 // Project API Functions
 // ============================================
 
-export async function createProject(name: string): Promise<{ status: string; project?: Project; message?: string }> {
+export async function createProject(
+  name: string
+): Promise<{ project: Project }> {
   const response = await fetch(`${API_BASE_URL}/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to create project');
+  }
   return response.json();
 }
 
-export async function listProjects(): Promise<{ status: string; projects: Project[] }> {
+export async function listProjects(): Promise<{
+  projects: Project[];
+}> {
   const response = await fetch(`${API_BASE_URL}/projects`);
+  if (!response.ok) {
+    throw new Error('Failed to list projects');
+  }
   return response.json();
+}
+
+export interface CanvasComponentData {
+  id: string;
+  componentName: string;
+  position: { x: number; y: number };
+  size?: { width: number; height: number };
 }
 
 export interface ProjectResponse {
-  status: string;
-  project?: Project;
-  components?: { name: string; filepath: string }[];
-  canvas?: CanvasComponentData[];
-  layouts?: LayoutDefinitionData[];
-  message?: string;
+  project: Project;
+  components: { name: string; filepath: string }[];
+  canvas: CanvasComponentData[];
 }
 
 export async function getProject(id: string): Promise<ProjectResponse> {
   const response = await fetch(`${API_BASE_URL}/projects/${id}`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to get project');
+  }
   return response.json();
 }
 
-export async function deleteProject(id: string): Promise<{ status: string; message: string }> {
+export async function deleteProject(id: string): Promise<{ success: boolean }> {
   const response = await fetch(`${API_BASE_URL}/projects/${id}`, {
     method: 'DELETE',
   });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete project');
+  }
   return response.json();
 }
 
-export async function deleteProjectComponent(projectId: string, componentName: string): Promise<APIResponse> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/components/${componentName}`, {
-    method: 'DELETE',
-  });
+export async function deleteProjectComponent(
+  projectId: string,
+  componentName: string
+): Promise<{ success: boolean }> {
+  const response = await fetch(
+    `${API_BASE_URL}/projects/${projectId}/components/${componentName}`,
+    {
+      method: 'DELETE',
+    }
+  );
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete component');
+  }
   return response.json();
 }
 
@@ -162,67 +199,18 @@ export async function deleteProjectComponent(projectId: string, componentName: s
 // Canvas API Functions
 // ============================================
 
-export interface CanvasComponentData {
-  id: string;
-  componentName: string;
-  position: { x: number; y: number };
-  size?: { width: number; height: number };
-  interactions?: any[];
-}
-
-export async function saveProjectCanvas(projectId: string, components: CanvasComponentData[]): Promise<{ status: string }> {
+export async function saveProjectCanvas(
+  projectId: string,
+  components: CanvasComponentData[]
+): Promise<{ success: boolean }> {
   const response = await fetch(`${API_BASE_URL}/projects/${projectId}/canvas`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ components }),
   });
-  return response.json();
-}
-
-// ============================================
-// Layout API Functions
-// ============================================
-
-export interface LayoutDefinitionData {
-  name?: string;
-  type: 'Stack' | 'Flex' | 'Grid' | 'Container';
-  props?: Record<string, unknown>;
-  children: Array<{ component: string; props?: Record<string, unknown> } | LayoutDefinitionData>;
-}
-
-export interface CanvasLayoutData {
-  id: string;
-  layoutName: string;
-  position: { x: number; y: number };
-  size?: { width: number; height: number };
-}
-
-export async function getProjectLayout(projectId: string, layoutName: string): Promise<{ status: string; layout?: LayoutDefinitionData; message?: string }> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/layouts/${layoutName}`);
-  return response.json();
-}
-
-export async function createProjectLayout(projectId: string, name: string, layout: LayoutDefinitionData): Promise<{ status: string; layout_name?: string; message?: string }> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/layouts`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, layout }),
-  });
-  return response.json();
-}
-
-export async function updateProjectLayout(projectId: string, layoutName: string, layout: LayoutDefinitionData): Promise<{ status: string; message?: string }> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/layouts/${layoutName}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ layout }),
-  });
-  return response.json();
-}
-
-export async function deleteProjectLayout(projectId: string, layoutName: string): Promise<{ status: string; message?: string }> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/layouts/${layoutName}`, {
-    method: 'DELETE',
-  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to save canvas');
+  }
   return response.json();
 }

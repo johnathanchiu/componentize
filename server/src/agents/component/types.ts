@@ -1,5 +1,3 @@
-import type { LayoutDefinition } from '../../../../shared/types';
-
 export interface Position {
   x: number;
   y: number;
@@ -22,13 +20,6 @@ export interface PlanComponentsInput {
 export interface CreateComponentInput {
   name: string;
   code: string;
-  position?: Position;
-  size?: Size;
-}
-
-export interface CreateLayoutInput {
-  name: string;
-  layout: LayoutDefinition;
   position?: Position;
   size?: Size;
 }
