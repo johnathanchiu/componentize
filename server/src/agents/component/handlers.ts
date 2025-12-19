@@ -3,6 +3,8 @@ import type { ToolResult } from '../base';
 import { fileService } from '../../services/fileService';
 import { projectService, CanvasComponent } from '../../services/projectService';
 import { validateComponent } from '../validator';
+import { analyzeComplexity } from '../../services/componentAnalyzer';
+import { decomposeComponent } from '../../services/componentDecomposer';
 import type {
   PlanComponentsInput,
   CreateComponentInput,
@@ -212,6 +214,66 @@ export async function handleCreateComponent(
       return {
         status: 'error',
         message: `Component "${name}" has errors: ${compileError}. Please fix and try again.${remaining > 0 ? ` (${remaining} attempt(s) remaining)` : ' (final attempt - will save without validation next time)'}`
+      };
+    }
+
+    // Check complexity and try automatic decomposition
+    const complexity = analyzeComplexity(code, name);
+    if (complexity.isComplex) {
+      console.log(`Component "${name}" is complex: ${complexity.reasons.join(', ')}`);
+
+      // Try automatic decomposition
+      try {
+        const decomposed = decomposeComponent(code, name, position);
+
+        if (decomposed.length > 1) {
+          console.log(`Decomposing "${name}" into ${decomposed.length} atomic components`);
+
+          const existingCanvas = await projectService.getCanvas(projectId);
+          const createdNames: string[] = [];
+
+          // Save each decomposed component
+          for (const comp of decomposed) {
+            const saveResult = await fileService.createProjectComponent(projectId, comp.name, comp.code);
+            if (saveResult.status !== 'success') {
+              console.error(`Failed to save decomposed component ${comp.name}:`, saveResult.message);
+              continue;
+            }
+
+            const canvasComp: CanvasComponent = {
+              id: uuidv4(),
+              componentName: comp.name,
+              position: comp.position,
+              size: comp.size
+            };
+            existingCanvas.push(canvasComp);
+            createdNames.push(comp.name);
+            context.createdComponents.push(comp.name);
+          }
+
+          await projectService.saveCanvas(projectId, existingCanvas);
+          validationFailures.delete(name);
+
+          return {
+            status: 'success',
+            message: `Component "${name}" was too complex and has been automatically decomposed into ${createdNames.length} atomic components: ${createdNames.join(', ')}`,
+            decomposed: createdNames,
+            originalName: name
+          };
+        }
+      } catch (err) {
+        console.error(`Decomposition failed for "${name}":`, err);
+        // Fall through to save as-is if decomposition fails
+      }
+
+      // If decomposition didn't produce results, return error for agent retry
+      validationFailures.set(name, currentFailures + 1);
+      const remaining = MAX_VALIDATION_FAILURES - currentFailures - 1;
+      return {
+        status: 'error',
+        message: `Component "${name}" is too complex (${complexity.reasons.join(', ')}). ` +
+          `Components must be ATOMIC - one visual element each. ` +
+          `Please split into smaller components.${remaining > 0 ? ` (${remaining} attempt(s) remaining)` : ''}`
       };
     }
   } else {
