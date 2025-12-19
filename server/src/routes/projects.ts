@@ -36,15 +36,17 @@ export function registerProjectRoutes(server: FastifyInstance) {
       return reply.code(404).send({ error: 'Project not found' });
     }
 
-    const [componentsResult, canvas] = await Promise.all([
+    const [componentsResult, canvas, history] = await Promise.all([
       fileService.listProjectComponents(id),
       projectService.getCanvas(id),
+      projectService.getHistory(id),
     ]);
 
     return {
       project,
       components: componentsResult.components || [],
       canvas: canvas || [],
+      history: history || [],
     };
   });
 

@@ -72,6 +72,7 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
 
   addToCanvas: (component) =>
     set((state) => {
+      console.log('[Canvas] addToCanvas:', component.componentName, 'at', component.position);
       const newComponents = [...state.canvasComponents, component];
       if (state.currentProjectId) {
         debouncedSave(state.currentProjectId, newComponents);
@@ -81,6 +82,8 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
 
   updatePosition: (id, x, y) =>
     set((state) => {
+      const comp = state.canvasComponents.find((c) => c.id === id);
+      console.log('[Canvas] updatePosition:', comp?.componentName, 'to', { x, y });
       const newComponents = state.canvasComponents.map((comp) =>
         comp.id === id ? { ...comp, position: { x, y } } : comp
       );
@@ -92,6 +95,8 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
 
   updateSize: (id, width, height, x, y) =>
     set((state) => {
+      const comp = state.canvasComponents.find((c) => c.id === id);
+      console.log('[Canvas] updateSize:', comp?.componentName, 'to', { width, height }, x !== undefined ? `pos: ${x}, ${y}` : '');
       const newComponents = state.canvasComponents.map((comp) => {
         if (comp.id === id) {
           const updates: Partial<CanvasComponent> = { size: { width, height } };
@@ -139,6 +144,8 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
 
   removeFromCanvas: (id) =>
     set((state) => {
+      const comp = state.canvasComponents.find((c) => c.id === id);
+      console.log('[Canvas] removeFromCanvas:', comp?.componentName);
       const newComponents = state.canvasComponents.filter((comp) => comp.id !== id);
       const newConnections = state.stateConnections.filter((c) => c.componentId !== id);
 

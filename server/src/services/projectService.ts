@@ -17,6 +17,14 @@ export interface CanvasComponent {
   size?: { width: number; height: number };
 }
 
+// Stream event for conversation history
+export interface StreamEvent {
+  type: string;
+  message: string;
+  timestamp: number;
+  data?: Record<string, unknown>;
+}
+
 class ProjectService {
   /**
    * Get the path to the projects directory inside the workspace
@@ -44,6 +52,13 @@ class ProjectService {
    */
   private getCanvasPath(projectId: string): string {
     return path.join(this.getProjectDir(projectId), 'canvas.json');
+  }
+
+  /**
+   * Get the path to a project's conversation history file
+   */
+  private getHistoryPath(projectId: string): string {
+    return path.join(this.getProjectDir(projectId), 'history.json');
   }
 
   /**
@@ -79,7 +94,8 @@ class ProjectService {
       const metadataPath = this.getProjectMetadataPath(id);
       const content = await fs.readFile(metadataPath, 'utf-8');
       return JSON.parse(content) as Project;
-    } catch {
+    } catch (error) {
+      console.warn(`Failed to load project ${id}:`, error);
       return null;
     }
   }
@@ -105,7 +121,8 @@ class ProjectService {
 
       // Sort by creation date, newest first
       return projects.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    } catch {
+    } catch (error) {
+      console.error('Failed to list projects:', error);
       return [];
     }
   }
@@ -157,6 +174,47 @@ class ProjectService {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Get the conversation history for a project
+   */
+  async getHistory(projectId: string): Promise<StreamEvent[]> {
+    try {
+      const historyPath = this.getHistoryPath(projectId);
+      const content = await fs.readFile(historyPath, 'utf-8');
+      return JSON.parse(content) as StreamEvent[];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Append events to the conversation history
+   */
+  async appendHistory(projectId: string, events: StreamEvent[]): Promise<void> {
+    const historyPath = this.getHistoryPath(projectId);
+    const existing = await this.getHistory(projectId);
+    const updated = [...existing, ...events];
+    await fs.writeFile(historyPath, JSON.stringify(updated, null, 2));
+  }
+
+  /**
+   * Append a single event to the conversation history
+   */
+  async appendHistoryEvent(projectId: string, event: StreamEvent): Promise<void> {
+    const historyPath = this.getHistoryPath(projectId);
+    const existing = await this.getHistory(projectId);
+    existing.push(event);
+    await fs.writeFile(historyPath, JSON.stringify(existing, null, 2));
+  }
+
+  /**
+   * Clear the conversation history for a project
+   */
+  async clearHistory(projectId: string): Promise<void> {
+    const historyPath = this.getHistoryPath(projectId);
+    await fs.writeFile(historyPath, JSON.stringify([], null, 2));
   }
 }
 

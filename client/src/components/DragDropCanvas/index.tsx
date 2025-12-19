@@ -7,13 +7,16 @@ import {
   Controls,
   useReactFlow,
   applyNodeChanges,
+  getNodesBounds,
+  getViewportForBounds,
   type Node,
   type NodeChange,
   type Edge,
   BackgroundVariant,
 } from '@xyflow/react';
+import { toPng } from 'html-to-image';
 import '@xyflow/react/dist/style.css';
-import { Link2, Link2Off } from 'lucide-react';
+import { Link2, Link2Off, Camera } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 import { useGenerationStore } from '../../store/generationStore';
 import { useProjectStore } from '../../store/projectStore';
@@ -27,7 +30,7 @@ const nodeTypes = {
 };
 
 function DragDropCanvasInner() {
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getNodes } = useReactFlow();
   const { currentProject } = useProjectStore();
   const {
     canvasComponents,
@@ -119,6 +122,9 @@ function DragDropCanvasInner() {
             position: derived.position,
             data: derived.data,
             selected: derived.selected,
+            // Sync width/height for resize support
+            width: derived.width,
+            height: derived.height,
           };
         }
         return derived;
@@ -246,6 +252,53 @@ function DragDropCanvasInner() {
   );
 
   // ============================================
+  // DEBUG: Image export and state exposure
+  // ============================================
+
+  const downloadImage = useCallback(async () => {
+    const flowNodes = getNodes();
+    if (flowNodes.length === 0) return;
+
+    const nodesBounds = getNodesBounds(flowNodes);
+    const viewport = getViewportForBounds(nodesBounds, 1200, 800, 0.5, 2, 0.2);
+
+    const element = document.querySelector('.react-flow__viewport') as HTMLElement;
+    if (!element) return;
+
+    try {
+      const dataUrl = await toPng(element, {
+        backgroundColor: '#ffffff',
+        width: 1200,
+        height: 800,
+        style: {
+          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+        },
+      });
+
+      const link = document.createElement('a');
+      link.download = `canvas-${currentProject?.id || 'export'}.png`;
+      link.href = dataUrl;
+      link.click();
+      console.log('[Canvas] Image exported');
+    } catch (err) {
+      console.error('[Canvas] Failed to export image:', err);
+    }
+  }, [getNodes, currentProject]);
+
+  // Expose debug state to window for Playwright/console access
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__CANVAS_DEBUG__ = {
+        nodes,
+        edges,
+        canvasComponents,
+        downloadImage,
+        currentProject,
+      };
+    }
+  }, [nodes, edges, canvasComponents, downloadImage, currentProject]);
+
+  // ============================================
   // RENDER
   // ============================================
 
@@ -298,8 +351,19 @@ function DragDropCanvasInner() {
         </ReactFlow>
       )}
 
-      {hasConnections && (
-        <div className="absolute top-3 right-3 z-50">
+      {/* Top-right controls */}
+      <div className="absolute top-3 right-3 z-50 flex gap-2">
+        {hasContent && (
+          <button
+            onClick={downloadImage}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors shadow-sm bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200"
+            title="Export canvas as image"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span>Export</span>
+          </button>
+        )}
+        {hasConnections && (
           <button
             onClick={toggleShowConnections}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors shadow-sm ${
@@ -321,8 +385,8 @@ function DragDropCanvasInner() {
               </>
             )}
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

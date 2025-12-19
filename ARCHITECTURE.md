@@ -9,12 +9,12 @@ Componentize is a visual React component builder with AI-powered generation. Use
 │                        Client (React)                       │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │  LeftPanel  │  │   Canvas    │  │    CodePreview      │  │
-│  │  - Create   │  │  - Items    │  │    - View code      │  │
+│  │  - Create   │  │  - ReactFlow│  │    - View code      │  │
 │  │  - Library  │  │  - Drag/Drop│  │    - Edit mode      │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 │                           │                                 │
 │                    Zustand Stores                           │
-│         (canvasStore, projectStore, pageGenerationStore)    │
+│         (canvasStore, projectStore, generationStore)        │
 └────────────────────────────┬────────────────────────────────┘
                              │ HTTP/SSE
 ┌────────────────────────────┴────────────────────────────────┐
@@ -22,7 +22,7 @@ Componentize is a visual React component builder with AI-powered generation. Use
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │   Routes    │  │   Agents    │  │     Services        │  │
 │  │  /api/*     │──│  Component  │──│  - fileService      │  │
-│  │             │  │  Interaction│  │  - projectService   │  │
+│  │             │  │             │  │  - projectService   │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 │                           │                                 │
 │                    Anthropic Claude API                     │
@@ -35,43 +35,57 @@ Componentize is a visual React component builder with AI-powered generation. Use
 componentize/
 ├── client/                    # React frontend
 │   └── src/
-│       ├── components/        # UI components
-│       │   ├── LeftPanel.tsx      # Create form + component library
-│       │   ├── DragDropCanvas/    # Canvas with draggable items
-│       │   │   ├── index.tsx          # Main canvas component
-│       │   │   ├── CanvasItem.tsx     # Individual canvas item
-│       │   │   ├── CanvasItemToolbar.tsx
+│       ├── components/
+│       │   ├── LeftPanel.tsx           # Create form + component library
+│       │   ├── DragDropCanvas/         # React Flow canvas
+│       │   │   ├── index.tsx           # Main canvas with ReactFlowProvider
+│       │   │   ├── ComponentNode.tsx   # Individual node renderer
+│       │   │   ├── ErrorBoundary.tsx
 │       │   │   └── ErrorOverlay.tsx
-│       │   ├── InteractionPanel/  # Component interaction controls
-│       │   │   ├── index.tsx
-│       │   │   ├── AddInteractionForm.tsx
-│       │   │   ├── EditComponentForm.tsx
-│       │   │   └── ViewCodeSection.tsx
+│       │   ├── projects/
+│       │   │   └── ProjectsPage.tsx    # Landing page with prompt input
+│       │   ├── page-generation/        # Page generation UI
+│       │   │   ├── GeneratePageButton.tsx
+│       │   │   ├── GeneratePageModal.tsx
+│       │   │   └── PageGenerationOverlay.tsx
+│       │   ├── Timeline.tsx            # Streaming events display
+│       │   ├── TimelineEvent.tsx       # Individual event renderer
+│       │   ├── CodePreviewPanel.tsx
 │       │   └── ...
-│       ├── store/             # Zustand state management
-│       │   ├── canvasStore.ts         # Canvas items, positions, connections
-│       │   ├── generationStore.ts     # AI generation, streaming state
-│       │   ├── componentLibraryStore.ts # Available components
-│       │   └── projectStore.ts        # Current project
-│       └── lib/
-│           ├── api.ts             # API client + SSE streaming
-│           ├── componentRenderer.ts # Runtime JSX compilation
-│           └── sharedStore.ts     # Cross-component state sharing
+│       ├── store/
+│       │   ├── canvasStore.ts          # Canvas items, positions, sizes
+│       │   ├── generationStore.ts      # AI generation + page generation state
+│       │   └── projectStore.ts         # Project metadata + available components
+│       ├── lib/
+│       │   ├── api.ts                  # API client + SSE streaming
+│       │   ├── componentRenderer.ts    # Runtime JSX compilation
+│       │   └── sharedStore.ts          # Cross-component state sharing
+│       └── hooks/
+│           ├── useCmdKey.ts
+│           └── useResizablePanel.ts
 │
 ├── server/                    # Fastify backend
 │   └── src/
-│       ├── server.ts          # Route definitions
-│       ├── agents/            # Claude-powered agents
-│       │   ├── baseAgent.ts       # Streaming loop, tool execution
-│       │   ├── componentAgent.ts  # Component generation
-│       │   └── interactionAgent.ts
+│       ├── server.ts
+│       ├── routes/
+│       │   ├── projects.ts             # Project CRUD
+│       │   ├── generation.ts           # SSE generation endpoint
+│       │   ├── components.ts           # Component CRUD
+│       │   ├── canvas.ts               # Canvas persistence
+│       │   └── export.ts               # ZIP export
+│       ├── agents/
+│       │   ├── base.ts                 # Streaming loop, tool execution
+│       │   └── component/              # Component generation agent
+│       │       ├── index.ts
+│       │       ├── tools.ts
+│       │       ├── handlers.ts
+│       │       └── prompt.ts
 │       └── services/
-│           ├── fileService.ts     # Component file CRUD
-│           ├── projectService.ts  # Project management
-│           └── exportService.ts   # ZIP export
+│           ├── fileService.ts          # Component file CRUD
+│           ├── projectService.ts       # Project + history management
+│           └── exportService.ts        # ZIP export
 │
-└── shared/                    # Shared types
-    └── types.ts
+└── ARCHITECTURE.md
 ```
 
 ## Data Flow
@@ -87,76 +101,62 @@ User prompt → LeftPanel → api.generateStream()
                               ↓
                       Claude API (streaming)
                               ↓
-                      Tool calls: create_component
+                      Tool calls: create_component, update_component
                               ↓
                       fileService.createComponent()
                               ↓ (events)
                          Client receives
                               ↓
-                      canvasStore.addStreamingEvent()
+                      generationStore.addStreamingEvent()
                       canvasStore.addToCanvas()
 ```
 
 ### 2. Canvas Persistence
 
 ```
-User drags component → onDragEnd → updatePosition()
-                                        ↓
-                               canvasStore (Zustand)
-                                        ↓
-                               debouncedSave (500ms)
-                                        ↓
-                               api.saveProjectCanvas()
-                                        ↓
-                               Server: projectService.saveCanvas()
+User drags component → onNodesChange → updatePosition()
+                                            ↓
+                                   canvasStore (Zustand)
+                                            ↓
+                                   debouncedSave (500ms)
+                                            ↓
+                                   api.saveProjectCanvas()
+                                            ↓
+                                   Server: projectService.saveCanvas()
 ```
 
 ### 3. Component Rendering (Runtime Compilation)
 
-Components are compiled and executed at runtime in the browser. This allows AI-generated code to be rendered without a build step.
+Components are compiled and executed at runtime in the browser:
 
 ```
-CanvasItem mounts → fetch `/api/projects/{id}/components/{name}`
-                         ↓
-                    componentRenderer.loadComponent()
-                         ↓
-                    prepareSource() - strip imports/exports
-                         ↓
-                    sucrase.transform() - JSX/TS → JS
-                         ↓
-                    new Function(...scopeKeys, code)
-                         ↓
-                    fn(...scopeValues) → React component
-                         ↓
-                    Render in CanvasItem with error boundary
+ComponentNode mounts → fetch `/api/projects/{id}/components/{name}`
+                            ↓
+                       componentRenderer.loadComponent()
+                            ↓
+                       prepareSource() - strip imports/exports
+                            ↓
+                       sucrase.transform() - JSX/TS → JS
+                            ↓
+                       new Function(...scopeKeys, code)
+                            ↓
+                       fn(...scopeValues) → React component
+                            ↓
+                       Render in ComponentNode with error boundary
 ```
-
-**Step-by-step breakdown:**
-
-1. **Fetch Source**: Raw `.tsx` source is fetched from the server
-2. **Strip Imports**: `prepareSource()` removes import statements (they'd fail at runtime)
-3. **Convert Exports**: `export default function X` → `function X`
-4. **Compile**: Sucrase transforms JSX and TypeScript to plain JavaScript
-5. **Create Function**: `new Function()` wraps compiled code with scope injection
-6. **Execute**: Function receives COMPONENT_SCOPE values, returns the component
-7. **Render**: Component is rendered inside CanvasItem with error boundaries
-
-**Why this approach:**
-- No build step required for generated components
-- Components are sandboxed - can only access COMPONENT_SCOPE
-- Hot reload: edit code, re-fetch, re-compile
-- Errors are caught and displayed in the canvas item
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `client/src/lib/api.ts` | All API calls, SSE streaming utility |
-| `client/src/store/canvasStore.ts` | Central state: canvas, streaming, UI |
-| `client/src/components/DragDropCanvas.tsx` | Canvas + CanvasItem rendering |
-| `server/src/agents/baseAgent.ts` | Claude streaming loop, tool handling |
-| `server/src/agents/componentAgent.ts` | Component generation tools |
-| `server/src/services/fileService.ts` | Component CRUD operations |
+| `client/src/store/canvasStore.ts` | Canvas state: items, positions, sizes |
+| `client/src/store/generationStore.ts` | Generation state: streaming, status, page gen |
+| `client/src/store/projectStore.ts` | Project metadata + available components |
+| `client/src/components/DragDropCanvas/index.tsx` | React Flow canvas |
+| `client/src/components/LeftPanel.tsx` | Create tab + Library tab |
+| `server/src/agents/component/index.ts` | Component generation agent |
+| `server/src/services/projectService.ts` | Project + history persistence |
 
 ## Streaming Pattern
 
@@ -170,7 +170,7 @@ async function* postAndStream(url, body) {
   // ... yield JSON events
 }
 
-// Server (baseAgent.ts)
+// Server (base.ts)
 async *runAgentLoop() {
   const stream = client.messages.stream({ ... });
   for await (const event of stream) {
@@ -182,49 +182,31 @@ async *runAgentLoop() {
 
 ## State Management
 
-Four Zustand stores with clear separation of concerns:
+Three Zustand stores with clear separation:
 
-1. **canvasStore** - Canvas items, positions, sizes, selection, state connections
-2. **generationStore** - AI generation state: streaming, status, component versions
-3. **componentLibraryStore** - Available components in the library
-4. **projectStore** - Current project metadata
+1. **canvasStore** - Canvas items, positions, sizes, selection
+2. **generationStore** - AI generation state: streaming events, status, page generation
+3. **projectStore** - Current project metadata + available components list
 
 ## Component Scope (Sandboxed Environment)
 
-Generated components run in a sandboxed environment. They cannot import arbitrary modules - only what's explicitly provided in `COMPONENT_SCOPE`:
+Generated components run in a sandboxed environment with `COMPONENT_SCOPE`:
 
 ```typescript
-// componentRenderer.ts
 const COMPONENT_SCOPE = {
   // React core
   React, useState, useEffect, useRef, useCallback, useMemo,
 
-  // Cross-component state (from sharedStore.ts)
+  // Cross-component state
   useSharedState,
 
   // shadcn/ui components
-  Button, Card, CardContent, CardHeader, CardTitle,
-  Input, Label, Textarea, Checkbox, Dialog, Select, Tabs,
-  Alert, Avatar, Badge, Separator, // etc.
+  Button, Card, Input, Dialog, Select, Tabs, ...
 
   // Lucide icons (100+)
-  ArrowRight, Check, ChevronDown, Heart, Home, Mail,
-  Search, Settings, Star, User, X, // etc.
+  ArrowRight, Check, Heart, Home, Search, ...
 };
 ```
 
-**Available to components:**
-| Category | Examples |
-|----------|----------|
-| React | `useState`, `useEffect`, `useRef`, `useCallback`, `useMemo` |
-| UI Components | All shadcn/ui primitives (Button, Card, Dialog, etc.) |
-| Icons | 100+ Lucide icons |
-| State Sharing | `useSharedState(key)` for cross-component communication |
-
-**Not available:**
-- `fetch` / network requests
-- `localStorage` / `sessionStorage`
-- DOM manipulation (`document.querySelector`, etc.)
-- External npm packages
-
-This sandboxing prevents generated components from performing unsafe operations while still allowing rich, interactive UIs.
+**Available:** React hooks, shadcn/ui, Lucide icons, useSharedState
+**Not available:** fetch, localStorage, DOM APIs, external packages

@@ -46,6 +46,7 @@ interface GenerationStore {
 
   // Single component actions
   addStreamingEvent: (event: StreamEvent) => void;
+  setStreamingEvents: (events: StreamEvent[]) => void;
   clearStreamingEvents: () => void;
   setStreamStatus: (status: StreamStatus) => void;
   setStreamPanelExpanded: (expanded: boolean) => void;
@@ -148,6 +149,7 @@ export const useGenerationStore = create<GenerationStore>()(
                     state.streamStatus,
         })),
 
+      setStreamingEvents: (events) => set({ streamingEvents: events }),
       clearStreamingEvents: () => set({ streamingEvents: [], streamStatus: 'idle' }),
       setStreamStatus: (status) => set({ streamStatus: status }),
       setStreamPanelExpanded: (expanded) => set({ isStreamPanelExpanded: expanded }),

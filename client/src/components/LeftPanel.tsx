@@ -6,7 +6,6 @@ import { useGenerationStore } from '../store/generationStore';
 import { useProjectStore } from '../store/projectStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ResizeHandle } from './ResizeHandle';
-import { StatusOrb } from './StatusOrb';
 import { Timeline } from './Timeline';
 import { loadComponent } from '../lib/componentRenderer';
 import type { Size } from '../types/index';
@@ -34,7 +33,6 @@ function CreateTab() {
     pendingFixError,
     agentTodos,
     addStreamingEvent,
-    clearStreamingEvents,
     setStreamStatus,
     setStreamPanelExpanded,
     setCurrentComponentName,
@@ -53,6 +51,64 @@ function CreateTab() {
       setPrompt('');
     }
   }, [generationMode, editingComponentName]);
+
+  // Check for pending prompt from landing page (auto-trigger generation)
+  useEffect(() => {
+    const pendingPrompt = sessionStorage.getItem('pendingPrompt');
+    if (pendingPrompt && currentProject && !isGenerating) {
+      sessionStorage.removeItem('pendingPrompt');
+      // Small delay to ensure component is fully mounted
+      setTimeout(() => {
+        setPrompt(pendingPrompt);
+        // Trigger generation
+        triggerGenerationWithPrompt(pendingPrompt);
+      }, 100);
+    }
+  }, [currentProject?.id]);
+
+  // Function to trigger generation with a specific prompt (used by auto-trigger)
+  const triggerGenerationWithPrompt = async (promptText: string) => {
+    if (!promptText.trim()) return;
+
+    setError('');
+
+    // Add session divider
+    addStreamingEvent({
+      type: 'session_start',
+      message: 'Generating components',
+      timestamp: Date.now(),
+      data: { mode: 'create', componentName: 'components' },
+    });
+
+    // Add user message to timeline
+    addStreamingEvent({
+      type: 'user_message',
+      message: promptText,
+      timestamp: Date.now(),
+      data: { prompt: promptText },
+    });
+
+    setCurrentComponentName('components');
+    setIsGenerating(true);
+    setStreamPanelExpanded(true);
+    setStreamStatus('thinking');
+
+    try {
+      if (!currentProject) {
+        setError('No project selected');
+        setStreamStatus('error');
+        return;
+      }
+
+      const stream = generateStream(currentProject.id, promptText);
+      await handleStreamResponse(stream, true);
+    } catch (err) {
+      setError('Network error. Make sure the backend server is running.');
+      setStreamStatus('error');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   // Auto-trigger fix when there's a pending error
   useEffect(() => {
@@ -170,6 +226,14 @@ Call read_component to see the code, find the bug, and call update_component wit
       data: { mode: generationMode, componentName: targetLabel },
     });
 
+    // Add user message to timeline
+    addStreamingEvent({
+      type: 'user_message',
+      message: prompt,
+      timestamp: Date.now(),
+      data: { prompt },
+    });
+
     setCurrentComponentName(targetLabel);
     setIsGenerating(true);
     setStreamPanelExpanded(true);
@@ -197,7 +261,8 @@ Call read_component to see the code, find the bug, and call update_component wit
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && e.metaKey && !isGenerating) {
+    if (e.key === 'Enter' && !e.shiftKey && !isGenerating) {
+      e.preventDefault();
       handleGenerate();
     }
   };
@@ -212,14 +277,6 @@ Call read_component to see the code, find the bug, and call update_component wit
   // UI helper functions
   const isEditMode = generationMode === 'edit' || generationMode === 'fix';
   const showStreamingArea = isStreamPanelExpanded && (streamingEvents.length > 0 || isGenerating);
-
-  const getModeLabel = () => {
-    switch (generationMode) {
-      case 'edit': return 'Editing';
-      case 'fix': return 'Fixing';
-      default: return 'Generating';
-    }
-  };
 
   const getModeIcon = () => {
     switch (generationMode) {
@@ -245,47 +302,20 @@ Call read_component to see the code, find the bug, and call update_component wit
 
   return (
     <div className="flex flex-col h-full">
-      {/* Streaming area - fills available space */}
-      {showStreamingArea ? (
-        <div className="flex-1 min-h-0 flex flex-col border-b border-neutral-100">
-          <div className="flex items-center justify-between px-3 py-2 bg-neutral-50 flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <StatusOrb status={streamStatus} />
-              <span className="text-xs font-medium text-neutral-700">
-                {streamStatus === 'success'
-                  ? `${currentComponentName} ${generationMode === 'create' ? 'created' : 'updated'}!`
-                  : streamStatus === 'error'
-                    ? `${getModeLabel()} failed`
-                    : `${getModeLabel()} ${currentComponentName}...`}
-              </span>
-            </div>
-            {!isGenerating && streamingEvents.length > 0 && (
-              <button
-                onClick={clearStreamingEvents}
-                className="p-1 hover:bg-neutral-200 rounded transition-colors"
-                title="Clear history"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-neutral-400" />
-              </button>
-            )}
-          </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
-            <Timeline events={streamingEvents} />
-          </div>
-
-          {isEditMode && (
-            <iframe
-              ref={iframeRef}
-              className="hidden"
-              title="Component reload trigger"
-            />
-          )}
+      {/* Chat/Timeline area - fills available space */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
+          <Timeline events={streamingEvents} />
         </div>
-      ) : (
-        /* Spacer to push form to bottom when no streaming */
-        <div className="flex-1" />
-      )}
+
+        {isEditMode && (
+          <iframe
+            ref={iframeRef}
+            className="hidden"
+            title="Component reload trigger"
+          />
+        )}
+      </div>
 
       {/* Form area - at bottom, fixed height */}
       <div className="flex-shrink-0 p-3 border-t border-neutral-100">
@@ -639,6 +669,7 @@ function LibraryTab() {
 export function LeftPanel() {
   const [activeTab, setActiveTab] = useState<'create' | 'library'>('library');
   const { generationMode } = useGenerationStore();
+  const { currentProject } = useProjectStore();
 
   const { panelSize, isResizing, handleMouseDown } = useResizablePanel({
     storageKey: 'left-panel-width',
@@ -655,6 +686,14 @@ export function LeftPanel() {
       setActiveTab('create');
     }
   }, [generationMode]);
+
+  // Auto-switch to Create tab when there's a pending prompt from landing page
+  useEffect(() => {
+    const pendingPrompt = sessionStorage.getItem('pendingPrompt');
+    if (pendingPrompt && currentProject) {
+      setActiveTab('create');
+    }
+  }, [currentProject?.id]);
 
   return (
     <div

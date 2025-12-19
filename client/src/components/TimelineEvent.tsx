@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Brain, Wrench, CheckCircle, XCircle, Sparkles, Pencil, WrenchIcon, Code, ChevronDown, ChevronUp } from 'lucide-react';
+import { Brain, Wrench, CheckCircle, XCircle, Sparkles, Pencil, WrenchIcon, Code, ChevronDown, ChevronUp, User } from 'lucide-react';
 import type { StreamEvent } from '../types';
 
 interface TimelineEventProps {
@@ -9,25 +9,23 @@ interface TimelineEventProps {
 export function TimelineEvent({ event }: TimelineEventProps) {
   const [isCodeExpanded, setIsCodeExpanded] = useState(false);
 
-  // Session divider - render differently
+  // Session divider - skip rendering (user doesn't want these)
   if (event.type === 'session_start') {
-    const getModeIcon = () => {
-      switch (event.data?.mode) {
-        case 'create': return <Sparkles className="w-3 h-3" />;
-        case 'edit': return <Pencil className="w-3 h-3" />;
-        case 'fix': return <WrenchIcon className="w-3 h-3" />;
-        default: return <Sparkles className="w-3 h-3" />;
-      }
-    };
+    return null;
+  }
 
+  // User message - render with distinct styling
+  if (event.type === 'user_message') {
     return (
-      <div className="flex items-center gap-2 py-2 my-1">
-        <div className="flex-1 h-px bg-neutral-200" />
-        <div className="flex items-center gap-1.5 px-2 py-1 bg-neutral-100 rounded-full text-xs text-neutral-600 font-medium">
-          {getModeIcon()}
-          <span>{event.message}</span>
+      <div className="flex items-start gap-2 px-3 py-2 border-l-2 border-l-blue-500 bg-blue-50/50">
+        <div className="mt-0.5 flex-shrink-0">
+          <User className="w-3.5 h-3.5 text-blue-600" />
         </div>
-        <div className="flex-1 h-px bg-neutral-200" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-neutral-800 font-medium leading-relaxed break-words">
+            {event.message}
+          </p>
+        </div>
       </div>
     );
   }

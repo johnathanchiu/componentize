@@ -1,5 +1,5 @@
 import { BaseAgent, type ToolResult } from '../base';
-import type { StreamEvent } from '../../../../shared/types';
+import type { StreamEvent, AgentTodo } from '../../../../shared/types';
 import { COMPONENT_TOOLS } from './tools';
 import { SYSTEM_PROMPT } from './prompt';
 import {
@@ -12,6 +12,7 @@ import {
   type HandlerContext,
   type ComponentPlan,
 } from './handlers';
+import { projectService } from '../../services/projectService';
 import type {
   PlanComponentsInput,
   CreateComponentInput,
@@ -19,6 +20,12 @@ import type {
   ReadComponentInput,
   UpdateComponentInput,
 } from './types';
+
+interface ConversationContext {
+  lastTodos: AgentTodo[];
+  previousUserMessages: string[];
+  lastPlan: ComponentPlan[] | null;
+}
 
 export class ComponentAgent extends BaseAgent {
   private projectId: string | null = null;
@@ -60,6 +67,85 @@ export class ComponentAgent extends BaseAgent {
       createdComponents: this.createdComponents,
       validationFailures: this.validationFailures,
     };
+  }
+
+  /**
+   * Extract conversation context from history
+   * This allows the agent to continue from where it left off
+   */
+  private async getConversationContext(): Promise<ConversationContext> {
+    if (!this.projectId) {
+      return { lastTodos: [], previousUserMessages: [], lastPlan: null };
+    }
+
+    const history = await projectService.getHistory(this.projectId);
+
+    // Find the last todo_update event to get current task state
+    let lastTodos: AgentTodo[] = [];
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].type === 'todo_update' && history[i].data?.todos) {
+        lastTodos = history[i].data!.todos as AgentTodo[];
+        break;
+      }
+    }
+
+    // Extract previous user messages for context
+    const previousUserMessages = history
+      .filter(e => e.type === 'user_message')
+      .map(e => e.message);
+
+    // Find the last plan_components result
+    let lastPlan: ComponentPlan[] | null = null;
+    for (let i = history.length - 1; i >= 0; i--) {
+      const event = history[i];
+      if (event.type === 'tool_result' &&
+          event.data?.toolName === 'plan_components' &&
+          event.data?.result) {
+        const result = event.data.result as { plan?: ComponentPlan[] };
+        if (result.plan) {
+          lastPlan = result.plan;
+          break;
+        }
+      }
+    }
+
+    return { lastTodos, previousUserMessages, lastPlan };
+  }
+
+  /**
+   * Build context string from previous conversation
+   */
+  private buildConversationContextString(context: ConversationContext): string {
+    const parts: string[] = [];
+
+    // Include last plan if there was one
+    if (context.lastPlan && context.lastPlan.length > 0) {
+      const completedComponents = context.lastTodos
+        .filter(t => t.status === 'completed')
+        .map(t => t.content.replace('Create ', '').replace(' component', ''));
+
+      const pendingComponents = context.lastPlan
+        .filter(p => !completedComponents.includes(p.name))
+        .map(p => p.name);
+
+      if (pendingComponents.length > 0) {
+        parts.push(`PREVIOUS PLAN: You were creating ${context.lastPlan.length} components. Completed: ${completedComponents.join(', ') || '(none)'}. Still pending: ${pendingComponents.join(', ')}.`);
+      }
+    }
+
+    // Include last task state if there are incomplete tasks
+    if (context.lastTodos.length > 0) {
+      const incomplete = context.lastTodos.filter(t => t.status !== 'completed');
+      if (incomplete.length > 0) {
+        const taskSummary = context.lastTodos.map(t => {
+          const status = t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '→' : '○';
+          return `${status} ${t.content}`;
+        }).join('\n  ');
+        parts.push(`PREVIOUS TASKS (continue from here):\n  ${taskSummary}`);
+      }
+    }
+
+    return parts.join('\n\n');
   }
 
   protected async executeTool(toolName: string, toolInput: unknown): Promise<ToolResult> {
@@ -115,19 +201,39 @@ export class ComponentAgent extends BaseAgent {
     yield { type: 'progress', message: 'Processing request...', timestamp: Date.now() };
 
     const canvasContext = await buildCanvasContext(this.projectId);
+    const conversationContext = await this.getConversationContext();
+    const conversationContextString = this.buildConversationContextString(conversationContext);
 
-    const messages = [
-      {
-        role: 'user' as const,
-        content: `${canvasContext}
+    // If we have a previous plan, restore it so the agent can track progress
+    if (conversationContext.lastPlan) {
+      this.pendingPlan = conversationContext.lastPlan;
+      // Mark already-created components
+      const completedNames = conversationContext.lastTodos
+        .filter(t => t.status === 'completed')
+        .map(t => t.content.replace('Create ', '').replace(' component', ''));
+      this.createdComponents = completedNames;
+    }
 
-USER REQUEST: ${prompt}
+    // Build the user message with context
+    let userContent = canvasContext;
+
+    if (conversationContextString) {
+      userContent += `\n\n${conversationContextString}`;
+    }
+
+    userContent += `\n\nUSER REQUEST: ${prompt}
 
 Based on the complexity of this request:
 - If simple (single button, card, form): Call create_component directly
 - If complex (landing page, multiple elements): Call plan_components first, then create each
+- If user asks to "continue" and there are PREVIOUS TASKS shown above: Resume from where you left off, creating the remaining components using the same positions from the previous plan
 
-Start now.`
+Start now.`;
+
+    const messages = [
+      {
+        role: 'user' as const,
+        content: userContent
       }
     ];
 

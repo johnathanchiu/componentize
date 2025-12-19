@@ -14,7 +14,7 @@ import { getProject } from './lib/api';
 function App() {
   const { clearCanvas, setCanvasDirectly, selectedComponentId, removeFromCanvas } = useCanvasStore();
   const { currentProject, setCurrentProject, setAvailableComponents } = useProjectStore();
-  const { setCurrentProjectId, clearStreamingEvents } = useGenerationStore();
+  const { setCurrentProjectId, clearStreamingEvents, setStreamingEvents } = useGenerationStore();
   const [isLoading, setIsLoading] = useState(true);
 
   // Helper to load project with all data
@@ -27,6 +27,10 @@ function App() {
       setCanvasDirectly(result.canvas || [], projectId);
       // Set available components from consolidated response
       setAvailableComponents(result.components || []);
+      // Load conversation history
+      if (result.history && result.history.length > 0) {
+        setStreamingEvents(result.history);
+      }
       return result;
     } catch (error) {
       console.error('Failed to load project:', error);

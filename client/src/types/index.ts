@@ -43,6 +43,7 @@ export interface ListComponentsResponse extends APIResponse {
 // Streaming events
 export type StreamEventType =
   | 'session_start'
+  | 'user_message'
   | 'progress'
   | 'thinking'
   | 'tool_start'
@@ -54,7 +55,8 @@ export type StreamEventType =
   | 'page_plan'
   | 'component_start'
   | 'component_complete'
-  | 'canvas_update';
+  | 'canvas_update'
+  | 'todo_update';
 
 export type StreamStatus = 'idle' | 'thinking' | 'acting' | 'success' | 'error';
 
@@ -87,6 +89,7 @@ export interface StreamEvent {
   timestamp: number;
   data?: {
     content?: string;
+    prompt?: string; // User message content
     toolName?: string;
     toolInput?: Record<string, unknown>;
     toolUseId?: string;
@@ -104,5 +107,6 @@ export interface StreamEvent {
     totalComponents?: number;
     canvasComponent?: CanvasComponent;
     pageResult?: PageGenerationResult;
+    todos?: AgentTodo[];
   };
 }

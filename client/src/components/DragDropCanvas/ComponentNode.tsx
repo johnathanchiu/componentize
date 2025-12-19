@@ -20,7 +20,7 @@ export interface ComponentNodeData extends Record<string, unknown> {
   onClearSize?: () => void; // Reset to natural size
 }
 
-function ComponentNodeInner({ data, selected, width, height }: NodeProps & { data: ComponentNodeData }) {
+function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNodeData }) {
   const [Component, setComponent] = useState<ComponentType | null>(null);
   const [componentError, setComponentError] = useState<{ message: string; stack?: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,50 +29,14 @@ function ComponentNodeInner({ data, selected, width, height }: NodeProps & { dat
   const componentRef = useRef<HTMLDivElement>(null);
   const intrinsicSizeRef = useRef<Size | null>(null); // Store in ref to avoid feedback loops
 
-  const { isGenerating, generationMode, editingComponentName, componentVersions, startEditing, startFixing } = useGenerationStore();
+  const { isGenerating, generationMode, editingComponentName, componentVersions, startEditing } = useGenerationStore();
 
   // Track Cmd/Ctrl key state for pointer events
   // When Cmd is held, pointer events pass through to React Flow for drag/select
   const cmdKeyHeld = useCmdKey();
 
-  // Track which error we've attempted to auto-fix to prevent infinite loops
-  const autoFixAttemptedRef = useRef<string | null>(null);
-
   const componentVersion = componentVersions[data.componentName] || 0;
   const isBeingFixed = generationMode === 'fix' && editingComponentName === data.componentName && isGenerating;
-
-  // Reset auto-fix tracking when component version changes (fix was applied)
-  useEffect(() => {
-    autoFixAttemptedRef.current = null;
-  }, [componentVersion]);
-
-  // Auto-trigger fix when error is detected
-  useEffect(() => {
-    if (!componentError || !data.componentName) return;
-
-    // Create unique key for this error
-    const errorKey = `${data.componentName}:${componentError.message}`;
-
-    // Only auto-fix if:
-    // 1. We haven't already attempted to fix this exact error
-    // 2. We're not currently generating/fixing
-    // 3. This component isn't already being fixed
-    if (
-      autoFixAttemptedRef.current !== errorKey &&
-      !isGenerating &&
-      editingComponentName !== data.componentName
-    ) {
-      autoFixAttemptedRef.current = errorKey;
-      // Small delay to avoid race conditions with other state updates
-      const timer = setTimeout(() => {
-        startFixing(data.componentName, {
-          message: componentError.message,
-          stack: componentError.stack,
-        });
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [componentError, data.componentName, isGenerating, editingComponentName, startFixing]);
 
   // Store callback in ref to avoid re-triggering effect
   const connectionsCallbackRef = useRef(data.onConnectionsDetected);
@@ -178,11 +142,16 @@ function ComponentNodeInner({ data, selected, width, height }: NodeProps & { dat
   // Calculate scale factor from natural size to target size
   // When user resizes, component scales proportionally
   const scale = referenceSize && data.targetSize
-    ? Math.min(data.targetSize.width / referenceSize.width, data.targetSize.height / referenceSize.height)
+    ? Math.min(
+        data.targetSize.width / referenceSize.width,
+        data.targetSize.height / referenceSize.height
+      )
     : 1;
 
-  // Show bounds when selected OR when hovering with Cmd held
-  const showBounds = selected || (isHovered && cmdKeyHeld);
+  // Show subtle hover hint when not in edit mode (Cmd not held)
+  const showHoverHint = isHovered && !cmdKeyHeld;
+  // Show full bounds when Cmd is held AND (hovering OR selected)
+  const showBounds = cmdKeyHeld && (selected || isHovered);
 
   // When user has set explicit size, use fixed container dimensions
   // Otherwise, shrink-wrap to content (inline-block)
@@ -196,36 +165,29 @@ function ComponentNodeInner({ data, selected, width, height }: NodeProps & { dat
 
   return (
     <div
-      className={`relative ${data.targetSize ? '' : 'inline-block'} ${cmdKeyHeld ? 'cursor-move' : ''}`}
+      className={`relative ${data.targetSize ? '' : 'inline-block'} ${cmdKeyHeld ? 'cursor-move' : isHovered ? 'cursor-pointer' : ''}`}
       style={containerStyle}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
-      onMouseEnter={() => {
-        setIsHovered(true);
-        console.log('Component Hover:', {
-          projectId: data.projectId,
-          componentName: data.componentName,
-          naturalSize: data.naturalSize,
-          targetSize: data.targetSize,
-          hasExplicitSize: data.hasExplicitSize,
-          intrinsicSize: intrinsicSizeRef.current,
-          scale,
-          nodeBounds: { width, height }, // React Flow measured node dimensions
-        });
-      }}
+      onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Bounds outline - shown when selected or hovering with Cmd held */}
+      {/* Hover hint - shows when hovering WITHOUT Cmd */}
+      {showHoverHint && (
+        <div className="absolute -inset-[2px] rounded pointer-events-none border-2 border-neutral-500 bg-neutral-900/5 transition-opacity duration-150" />
+      )}
+
+      {/* Full outline - shows when Cmd held AND (hovering OR selected) */}
       {showBounds && (
         <div
-          className={`absolute inset-[-4px] border-2 rounded-lg pointer-events-none ${
-            selected ? 'border-blue-500' : 'border-blue-400 border-dashed'
+          className={`absolute inset-0 rounded pointer-events-none transition-all duration-150 ${
+            selected ? 'ring-2 ring-blue-500' : 'ring-2 ring-blue-400'
           }`}
         />
       )}
 
-      {/* Resize handle - bottom-right only */}
-      {showBounds && cmdKeyHeld && (
+      {/* Resize handle - only when selected and Cmd held */}
+      {showBounds && selected && (
         <NodeResizeControl
           position="bottom-right"
           minWidth={40}
@@ -238,7 +200,7 @@ function ComponentNodeInner({ data, selected, width, height }: NodeProps & { dat
             border: 'none',
           }}
         >
-          <div className="w-3 h-3 bg-blue-500 rounded-sm cursor-se-resize" />
+          <div className="w-5 h-5 bg-blue-500 rounded cursor-se-resize shadow-md" />
         </NodeResizeControl>
       )}
 
@@ -255,7 +217,7 @@ function ComponentNodeInner({ data, selected, width, height }: NodeProps & { dat
         >
           <div
             ref={componentRef}
-            className="p-2"
+            className={data.targetSize ? 'w-full h-full' : ''}
             style={{
               // CSS transform for scaling (when user has resized)
               transformOrigin: 'top left',

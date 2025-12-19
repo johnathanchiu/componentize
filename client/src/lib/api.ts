@@ -156,6 +156,7 @@ export interface ProjectResponse {
   project: Project;
   components: { name: string; filepath: string }[];
   canvas: CanvasComponentData[];
+  history: StreamEvent[];
 }
 
 export async function getProject(id: string): Promise<ProjectResponse> {
