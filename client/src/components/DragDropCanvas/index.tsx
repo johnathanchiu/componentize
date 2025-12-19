@@ -35,7 +35,6 @@ function DragDropCanvasInner() {
     selectedComponentId,
     setSelectedComponentId,
     updateSize,
-    updateNaturalSize,
     clearSize,
     updatePosition,
     addToCanvas,
@@ -84,10 +83,7 @@ function DragDropCanvasInner() {
         componentName: item.componentName,
         projectId: currentProject.id,
         targetSize: item.size,
-        naturalSize: item.naturalSize,
-        hasExplicitSize: !!item.size,
         onResize: (width: number, height: number) => updateSize(item.id, width, height),
-        onNaturalSizeChange: (size: { width: number; height: number }) => updateNaturalSize(item.id, size.width, size.height),
         onFix: (errorMessage: string, errorStack?: string) => {
           startFixing(item.componentName, { message: errorMessage, stack: errorStack });
         },
@@ -99,7 +95,7 @@ function DragDropCanvasInner() {
         height: item.size.height,
       }),
     }));
-  }, [canvasComponents, currentProject, selectedComponentId, updateSize, updateNaturalSize, startFixing, clearSize]);
+  }, [canvasComponents, currentProject, selectedComponentId, updateSize, startFixing, clearSize]);
 
   // React Flow local state
   const [nodes, setNodes] = useState<Node<ComponentNodeData>[]>([]);

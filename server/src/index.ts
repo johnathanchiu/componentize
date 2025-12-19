@@ -5,6 +5,22 @@ import { appConfig } from './config';
 async function start() {
   const server = await createApp();
 
+  // Graceful shutdown handler
+  const shutdown = async (signal: string) => {
+    console.log(`\n${signal} received, shutting down gracefully...`);
+    try {
+      await server.close();
+      console.log('Server closed');
+      process.exit(0);
+    } catch (err) {
+      console.error('Error during shutdown:', err);
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
   try {
     await server.listen({ port: appConfig.port, host: '0.0.0.0' });
 

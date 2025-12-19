@@ -7,9 +7,8 @@ export const DEFAULT_PORT = 5001;
 export const API_VERSION = 'v1';
 
 // AI Model Configuration
-export const MODEL_NAME = 'claude-sonnet-4-5-20250929';
-export const MAX_TOKENS = 4096;
-export const MAX_ITERATIONS = 5;
+// Note: MODEL_NAME, MAX_TOKENS, MAX_ITERATIONS are configured via .env
+// and loaded through server/src/config/index.ts
 
 // File Paths (relative to server directory)
 export const COMPONENTS_DIR = '.components';

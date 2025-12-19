@@ -6,6 +6,9 @@ import { ComponentErrorBoundary } from './ErrorBoundary';
 import { ErrorOverlay } from './ErrorOverlay';
 import type { Size } from '../../types/index';
 
+// Default size for components that don't have an explicit size set
+const DEFAULT_SIZE: Size = { width: 200, height: 120 };
+
 // Resize handle component - extracted for clarity
 interface ResizeHandleProps {
   startWidth: number;
@@ -26,8 +29,9 @@ function ResizeHandle({ startWidth, startHeight, onResize }: ResizeHandleProps) 
       const deltaX = moveEvent.clientX - initialX;
       const deltaY = moveEvent.clientY - initialY;
 
-      const newWidth = Math.max(40, startWidth + deltaX);
-      const newHeight = Math.max(24, startHeight + deltaY);
+      // Minimum size constraints
+      const newWidth = Math.max(100, startWidth + deltaX);
+      const newHeight = Math.max(80, startHeight + deltaY);
 
       onResize?.(Math.round(newWidth), Math.round(newHeight));
     };
@@ -64,14 +68,11 @@ function ResizeHandle({ startWidth, startHeight, onResize }: ResizeHandleProps) 
 export interface ComponentNodeData extends Record<string, unknown> {
   componentName: string;
   projectId: string;
-  targetSize?: Size; // User-set size after resize
-  naturalSize?: Size; // Stored reference size for scaling (persisted)
-  hasExplicitSize?: boolean;
+  targetSize?: Size; // User-set size (actual container dimensions)
   onFix?: (errorMessage: string, errorStack?: string) => void;
   onConnectionsDetected?: (source: string) => void;
-  onNaturalSizeChange?: (size: Size) => void;
   onResize?: (width: number, height: number) => void;
-  onClearSize?: () => void; // Reset to natural size
+  onClearSize?: () => void; // Reset to default size
 }
 
 function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNodeData }) {
@@ -79,9 +80,6 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
   const [componentError, setComponentError] = useState<{ message: string; stack?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
-  const [, forceUpdate] = useState(0); // For controlled re-renders
-  const componentRef = useRef<HTMLDivElement>(null);
-  const intrinsicSizeRef = useRef<Size | null>(null); // Store in ref to avoid feedback loops
 
   const { isGenerating, generationMode, editingComponentName, componentVersions, startEditing } = useGenerationStore();
 
@@ -123,47 +121,6 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
     return () => abortController.abort();
   }, [data.projectId, data.componentName, componentVersion]);
 
-  // Monitor component size with ResizeObserver
-  // Captures natural size initially and updates when content changes dynamically
-  // This keeps scale calculations accurate even after resize
-  useEffect(() => {
-    if (!componentRef.current) return;
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          const newSize = { width: Math.round(width), height: Math.round(height) };
-
-          // Update local ref for current measurement
-          intrinsicSizeRef.current = newSize;
-
-          // If no naturalSize stored yet, capture the initial snapshot
-          if (!data.naturalSize) {
-            data.onNaturalSizeChange?.(newSize);
-            forceUpdate(n => n + 1);
-          }
-          // Always update naturalSize when content size differs from stored naturalSize
-          // This keeps scale calculations accurate (targetSize / naturalSize)
-          // Compare with data.naturalSize, not prevSize, to detect drift
-          else if (data.naturalSize) {
-            const widthDrift = Math.abs(newSize.width - data.naturalSize.width) >= 2;
-            const heightDrift = Math.abs(newSize.height - data.naturalSize.height) >= 2;
-            if (widthDrift || heightDrift) {
-              // Update naturalSize to match current content
-              data.onNaturalSizeChange?.(newSize);
-              forceUpdate(n => n + 1);
-            }
-          }
-        }
-      }
-    });
-
-    resizeObserver.observe(componentRef.current);
-    return () => resizeObserver.disconnect();
-  }, [Component, data.naturalSize, data.onNaturalSizeChange]);
-
   const handleFixErrors = () => {
     if (!componentError || !data.onFix) return;
     data.onFix(componentError.message, componentError.stack);
@@ -178,35 +135,24 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
-    // Double-click to reset size to natural
-    if (data.hasExplicitSize && data.onClearSize) {
+    // Double-click to reset size to default
+    if (data.targetSize && data.onClearSize) {
       e.stopPropagation();
       console.log('Clearing size for:', data.componentName);
       data.onClearSize();
     }
   };
 
-  // Use stored naturalSize for scale calculation
-  const referenceSize = data.naturalSize || intrinsicSizeRef.current;
+  // Get current size - use targetSize or default
+  const currentSize = data.targetSize || DEFAULT_SIZE;
 
-  // Calculate scale factor from natural size to target size
-  // When user resizes, component scales proportionally
-  const scale = referenceSize && data.targetSize
-    ? Math.min(
-      data.targetSize.width / referenceSize.width,
-      data.targetSize.height / referenceSize.height
-    )
-    : 1;
-
-  // When user has set explicit size, use fixed container dimensions
-  // Otherwise, shrink-wrap to content (inline-block)
-  const containerStyle: React.CSSProperties = data.targetSize
-    ? {
-      width: data.targetSize.width,
-      height: data.targetSize.height,
-      overflow: 'hidden',
-    }
-    : {};
+  // Container style - set actual width/height on the container
+  // Component uses w-full h-full to fill this container and reflows naturally
+  const containerStyle: React.CSSProperties = {
+    width: currentSize.width,
+    height: currentSize.height,
+    overflow: 'hidden',
+  };
 
   // Use CSS outline for selection/hover - it renders OUTSIDE the element and is never clipped
   const outlineStyle: React.CSSProperties = selected
@@ -225,12 +171,12 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
     >
       {/* Main container with outline-based selection/hover indicator */}
       <div
-        className={`relative rounded ${data.targetSize ? '' : 'inline-block'}`}
+        className="relative rounded"
         style={{ ...containerStyle, ...outlineStyle }}
       >
-        {/* Component content */}
+        {/* Component content - fills container naturally via w-full h-full */}
         {loading && (
-          <div className="flex items-center justify-center p-4 text-xs text-neutral-400">
+          <div className="flex items-center justify-center w-full h-full text-xs text-neutral-400">
             Loading...
           </div>
         )}
@@ -239,14 +185,7 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
             onError={(error) => setComponentError({ message: error.message, stack: error.stack })}
             resetKey={componentVersion}
           >
-            <div
-              ref={componentRef}
-              className={data.targetSize ? 'w-full h-full' : ''}
-              style={{
-                transformOrigin: 'top left',
-                transform: scale !== 1 ? `scale(${scale})` : undefined,
-              }}
-            >
+            <div className="w-full h-full">
               <Component />
             </div>
           </ComponentErrorBoundary>
@@ -264,8 +203,8 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
       {/* Resize handle - sibling to content container, positioned at bottom-right */}
       {(selected || isHovered) && (
         <ResizeHandle
-          startWidth={data.targetSize?.width || referenceSize?.width || 200}
-          startHeight={data.targetSize?.height || referenceSize?.height || 100}
+          startWidth={currentSize.width}
+          startHeight={currentSize.height}
           onResize={data.onResize}
         />
       )}

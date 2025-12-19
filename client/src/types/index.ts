@@ -8,7 +8,6 @@ export interface CanvasComponent {
   componentName: string;
   position: Position;
   size?: Size;
-  naturalSize?: Size;
 }
 
 export interface Position {

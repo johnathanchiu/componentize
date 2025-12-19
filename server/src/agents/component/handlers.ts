@@ -41,6 +41,47 @@ export function validateComponentSize(name: string, code: string): string | null
 }
 
 /**
+ * Validate responsive structure - root element must have w-full h-full
+ * This ensures components can be properly resized on the canvas
+ */
+export function validateResponsiveStructure(name: string, code: string): string | null {
+  // Find the return statement's JSX - look for return followed by ( and <
+  // This handles both `return (<div` and `return (\n    <div` patterns
+  const returnMatch = code.match(/return\s*\(\s*<(\w+)[^>]*className\s*=\s*["'`]([^"'`]*)["'`]/);
+
+  if (!returnMatch) {
+    // Component might use a different pattern (e.g., returning a shadcn component)
+    // Check if there's a root element with className at all
+    const anyClassMatch = code.match(/return\s*\(\s*<(\w+)/);
+    if (anyClassMatch) {
+      // There's a return with JSX but no className on root - that's an error
+      return `Component "${name}" root element must have className with "w-full h-full". ` +
+        `Add className="w-full h-full ..." to the root <${anyClassMatch[1]}> element for canvas resize support.`;
+    }
+    // No clear pattern found, skip validation
+    return null;
+  }
+
+  const [, tagName, className] = returnMatch;
+
+  // Check for w-full and h-full (can be in any order, with other classes)
+  const hasWidthFull = /\bw-full\b/.test(className);
+  const hasHeightFull = /\bh-full\b/.test(className);
+
+  if (!hasWidthFull || !hasHeightFull) {
+    const missing = [];
+    if (!hasWidthFull) missing.push('w-full');
+    if (!hasHeightFull) missing.push('h-full');
+
+    return `Component "${name}" root <${tagName}> must have "${missing.join(' ')}" in className for canvas resize support. ` +
+      `Found: className="${className}". ` +
+      `Add the missing classes to make the component responsive.`;
+  }
+
+  return null;
+}
+
+/**
  * Build canvas context string to inject into the user prompt
  */
 export async function buildCanvasContext(projectId: string | null): Promise<string> {
@@ -153,6 +194,17 @@ export async function handleCreateComponent(
       };
     }
 
+    // Validate responsive structure (w-full h-full on root)
+    const responsiveError = validateResponsiveStructure(name, code);
+    if (responsiveError) {
+      validationFailures.set(name, currentFailures + 1);
+      const remaining = MAX_VALIDATION_FAILURES - currentFailures - 1;
+      return {
+        status: 'error',
+        message: `${responsiveError}${remaining > 0 ? ` (${remaining} attempt(s) remaining)` : ' (final attempt - will save without validation next time)'}`
+      };
+    }
+
     const compileError = validateComponent(code, name);
     if (compileError) {
       validationFailures.set(name, currentFailures + 1);
@@ -239,6 +291,17 @@ export async function handleUpdateComponent(
       return {
         status: 'error',
         message: `${sizeError}${remaining > 0 ? ` (${remaining} attempt(s) remaining)` : ' (final attempt - will save without validation next time)'}`
+      };
+    }
+
+    // Validate responsive structure (w-full h-full on root)
+    const responsiveError = validateResponsiveStructure(name, code);
+    if (responsiveError) {
+      validationFailures.set(name, currentFailures + 1);
+      const remaining = MAX_VALIDATION_FAILURES - currentFailures - 1;
+      return {
+        status: 'error',
+        message: `${responsiveError}${remaining > 0 ? ` (${remaining} attempt(s) remaining)` : ' (final attempt - will save without validation next time)'}`
       };
     }
 

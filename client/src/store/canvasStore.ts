@@ -33,7 +33,6 @@ interface CanvasStore {
   addToCanvas: (component: CanvasComponent) => void;
   updatePosition: (id: string, x: number, y: number) => void;
   updateSize: (id: string, width: number, height: number, x?: number, y?: number) => void;
-  updateNaturalSize: (id: string, width: number, height: number) => void;
   clearSize: (id: string) => void;
   removeFromCanvas: (id: string) => void;
   clearCanvas: () => void;
@@ -104,20 +103,6 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
             updates.position = { x, y };
           }
           return { ...comp, ...updates };
-        }
-        return comp;
-      });
-      if (state.currentProjectId) {
-        debouncedSave(state.currentProjectId, newComponents);
-      }
-      return { canvasComponents: newComponents };
-    }),
-
-  updateNaturalSize: (id, width, height) =>
-    set((state) => {
-      const newComponents = state.canvasComponents.map((comp) => {
-        if (comp.id === id) {
-          return { ...comp, naturalSize: { width, height } };
         }
         return comp;
       });
