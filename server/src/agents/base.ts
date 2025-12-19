@@ -114,22 +114,8 @@ When writing React components:
   ): AsyncGenerator<StreamEvent> {
     let iteration = 0;
 
-    yield {
-      type: 'progress',
-      message: 'Starting AI agent...',
-      timestamp: Date.now(),
-      data: { iteration: 0, maxIterations: appConfig.api.maxIterations }
-    };
-
     while (iteration < appConfig.api.maxIterations) {
       iteration++;
-
-      yield {
-        type: 'progress',
-        message: `Processing request...`,
-        timestamp: Date.now(),
-        data: { iteration, maxIterations: appConfig.api.maxIterations }
-      };
 
       try {
         // Create streaming request with system prompt and tool choice

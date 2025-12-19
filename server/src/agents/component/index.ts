@@ -198,8 +198,6 @@ export class ComponentAgent extends BaseAgent {
       return;
     }
 
-    yield { type: 'progress', message: 'Processing request...', timestamp: Date.now() };
-
     const canvasContext = await buildCanvasContext(this.projectId);
     const conversationContext = await this.getConversationContext();
     const conversationContextString = this.buildConversationContextString(conversationContext);

@@ -9,7 +9,7 @@ interface TimelineEventProps {
 export function TimelineEvent({ event }: TimelineEventProps) {
   const [isCodeExpanded, setIsCodeExpanded] = useState(false);
 
-  // Session divider - skip rendering (user doesn't want these)
+  // Session divider - skip rendering
   if (event.type === 'session_start') {
     return null;
   }
