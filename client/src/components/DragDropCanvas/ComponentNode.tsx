@@ -1,11 +1,65 @@
 import { useEffect, useState, useRef, type ComponentType, memo } from 'react';
-import { NodeResizeControl, type NodeProps } from '@xyflow/react';
+import { type NodeProps } from '@xyflow/react';
 import { useGenerationStore } from '../../store/generationStore';
-import { useCmdKey } from '../../hooks/useCmdKey';
 import { compileComponent } from '../../lib/componentRenderer';
 import { ComponentErrorBoundary } from './ErrorBoundary';
 import { ErrorOverlay } from './ErrorOverlay';
 import type { Size } from '../../types/index';
+
+// Resize handle component - extracted for clarity
+interface ResizeHandleProps {
+  startWidth: number;
+  startHeight: number;
+  onResize?: (width: number, height: number) => void;
+}
+
+function ResizeHandle({ startWidth, startHeight, onResize }: ResizeHandleProps) {
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const initialX = e.clientX;
+    const initialY = e.clientY;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      moveEvent.preventDefault();
+      const deltaX = moveEvent.clientX - initialX;
+      const deltaY = moveEvent.clientY - initialY;
+
+      const newWidth = Math.max(40, startWidth + deltaX);
+      const newHeight = Math.max(24, startHeight + deltaY);
+
+      onResize?.(Math.round(newWidth), Math.round(newHeight));
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  return (
+    <div
+      onMouseDown={handleMouseDown}
+      className="nodrag nopan absolute"
+      style={{
+        bottom: -8,
+        right: -8,
+        width: 16,
+        height: 16,
+        backgroundColor: '#3b82f6',
+        border: '2px solid white',
+        borderRadius: 4,
+        cursor: 'nwse-resize',
+        zIndex: 1001,
+        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+      }}
+    />
+  );
+}
 
 export interface ComponentNodeData extends Record<string, unknown> {
   componentName: string;
@@ -30,10 +84,6 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
   const intrinsicSizeRef = useRef<Size | null>(null); // Store in ref to avoid feedback loops
 
   const { isGenerating, generationMode, editingComponentName, componentVersions, startEditing } = useGenerationStore();
-
-  // Track Cmd/Ctrl key state for pointer events
-  // When Cmd is held, pointer events pass through to React Flow for drag/select
-  const cmdKeyHeld = useCmdKey();
 
   const componentVersion = componentVersions[data.componentName] || 0;
   const isBeingFixed = generationMode === 'fix' && editingComponentName === data.componentName && isGenerating;
@@ -143,99 +193,80 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
   // When user resizes, component scales proportionally
   const scale = referenceSize && data.targetSize
     ? Math.min(
-        data.targetSize.width / referenceSize.width,
-        data.targetSize.height / referenceSize.height
-      )
+      data.targetSize.width / referenceSize.width,
+      data.targetSize.height / referenceSize.height
+    )
     : 1;
-
-  // Show subtle hover hint when not in edit mode (Cmd not held)
-  const showHoverHint = isHovered && !cmdKeyHeld;
-  // Show full bounds when Cmd is held AND (hovering OR selected)
-  const showBounds = cmdKeyHeld && (selected || isHovered);
 
   // When user has set explicit size, use fixed container dimensions
   // Otherwise, shrink-wrap to content (inline-block)
   const containerStyle: React.CSSProperties = data.targetSize
     ? {
-        width: data.targetSize.width,
-        height: data.targetSize.height,
-        overflow: 'hidden',
-      }
+      width: data.targetSize.width,
+      height: data.targetSize.height,
+      overflow: 'hidden',
+    }
     : {};
+
+  // Use CSS outline for selection/hover - it renders OUTSIDE the element and is never clipped
+  const outlineStyle: React.CSSProperties = selected
+    ? { outline: '2px solid #3b82f6', outlineOffset: '2px' }
+    : isHovered
+      ? { outline: '2px solid #737373', outlineOffset: '2px' }
+      : {};
 
   return (
     <div
-      className={`relative ${data.targetSize ? '' : 'inline-block'} ${cmdKeyHeld ? 'cursor-move' : isHovered ? 'cursor-pointer' : ''}`}
-      style={containerStyle}
+      className="relative"
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Hover hint - shows when hovering WITHOUT Cmd */}
-      {showHoverHint && (
-        <div className="absolute -inset-[2px] rounded pointer-events-none border-2 border-neutral-500 bg-neutral-900/5 transition-opacity duration-150" />
-      )}
-
-      {/* Full outline - shows when Cmd held AND (hovering OR selected) */}
-      {showBounds && (
-        <div
-          className={`absolute inset-0 rounded pointer-events-none transition-all duration-150 ${
-            selected ? 'ring-2 ring-blue-500' : 'ring-2 ring-blue-400'
-          }`}
-        />
-      )}
-
-      {/* Resize handle - only when selected and Cmd held */}
-      {showBounds && selected && (
-        <NodeResizeControl
-          position="bottom-right"
-          minWidth={40}
-          minHeight={24}
-          onResize={(_event, params) => {
-            data.onResize?.(Math.round(params.width), Math.round(params.height));
-          }}
-          style={{
-            background: 'transparent',
-            border: 'none',
-          }}
-        >
-          <div className="w-5 h-5 bg-blue-500 rounded cursor-se-resize shadow-md" />
-        </NodeResizeControl>
-      )}
-
-      {/* Component content - transparent background */}
-      {loading && (
-        <div className="flex items-center justify-center p-4 text-xs text-neutral-400">
-          Loading...
-        </div>
-      )}
-      {!loading && Component && (
-        <ComponentErrorBoundary
-          onError={(error) => setComponentError({ message: error.message, stack: error.stack })}
-          resetKey={componentVersion}
-        >
-          <div
-            ref={componentRef}
-            className={data.targetSize ? 'w-full h-full' : ''}
-            style={{
-              // CSS transform for scaling (when user has resized)
-              transformOrigin: 'top left',
-              transform: scale !== 1 ? `scale(${scale})` : undefined,
-              // When Cmd is held, disable pointer events so clicks go to React Flow for selection/dragging
-              pointerEvents: cmdKeyHeld ? 'none' : 'auto',
-            }}
-          >
-            <Component />
+      {/* Main container with outline-based selection/hover indicator */}
+      <div
+        className={`relative rounded ${data.targetSize ? '' : 'inline-block'}`}
+        style={{ ...containerStyle, ...outlineStyle }}
+      >
+        {/* Component content */}
+        {loading && (
+          <div className="flex items-center justify-center p-4 text-xs text-neutral-400">
+            Loading...
           </div>
-        </ComponentErrorBoundary>
-      )}
+        )}
+        {!loading && Component && (
+          <ComponentErrorBoundary
+            onError={(error) => setComponentError({ message: error.message, stack: error.stack })}
+            resetKey={componentVersion}
+          >
+            <div
+              ref={componentRef}
+              className={data.targetSize ? 'w-full h-full' : ''}
+              style={{
+                transformOrigin: 'top left',
+                transform: scale !== 1 ? `scale(${scale})` : undefined,
+              }}
+            >
+              <Component />
+            </div>
+          </ComponentErrorBoundary>
+        )}
 
-      {componentError && (
-        <ErrorOverlay
-          message={componentError.message}
-          isFixing={isBeingFixed}
-          onFix={handleFixErrors}
+        {componentError && (
+          <ErrorOverlay
+            message={componentError.message}
+            isFixing={isBeingFixed}
+            onFix={handleFixErrors}
+          />
+        )}
+      </div>
+
+      {/* Resize handle - sibling to content container, positioned at bottom-right */}
+      {(selected || isHovered) && (
+        <ResizeHandle
+          startWidth={data.targetSize?.width || referenceSize?.width || 200}
+          startHeight={data.targetSize?.height || referenceSize?.height || 100}
+          onResize={data.onResize}
         />
       )}
     </div>

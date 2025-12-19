@@ -29,45 +29,6 @@ body {
   min-height: 100vh;
 }
 
-/* Resize handles - only show on hover */
-.resize-handle {
-  opacity: 0;
-  transition: opacity 0.2s;
-  background-color: #9333ea;
-}
-
-.group:hover .resize-handle {
-  opacity: 1;
-}
-
-.resize-handle-top,
-.resize-handle-bottom {
-  height: 4px;
-  cursor: ns-resize;
-}
-
-.resize-handle-left,
-.resize-handle-right {
-  width: 4px;
-  cursor: ew-resize;
-}
-
-.resize-handle-corner {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.resize-handle-corner.resize-handle-topRight,
-.resize-handle-corner.resize-handle-bottomLeft {
-  cursor: nesw-resize;
-}
-
-.resize-handle-corner.resize-handle-topLeft,
-.resize-handle-corner.resize-handle-bottomRight {
-  cursor: nwse-resize;
-}
-
 /* Make React Flow component nodes transparent and shrink to content */
 .react-flow__node-component {
   background: transparent !important;
@@ -77,6 +38,11 @@ body {
   /* Shrink to content size - no !important so inline style can override after resize */
   width: fit-content;
   height: fit-content;
+}
+
+/* Hide ALL of React Flow's default resize controls - we use our own */
+.react-flow__resize-control {
+  display: none !important;
 }
 
 /* Drag preview node for library-to-canvas drag */

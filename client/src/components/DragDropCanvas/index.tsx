@@ -15,12 +15,10 @@ import {
   BackgroundVariant,
 } from '@xyflow/react';
 import { toPng } from 'html-to-image';
-import '@xyflow/react/dist/style.css';
 import { Link2, Link2Off, Camera } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 import { useGenerationStore } from '../../store/generationStore';
 import { useProjectStore } from '../../store/projectStore';
-import { useCmdKey } from '../../hooks/useCmdKey';
 import { groupConnectionsByKey, generateConnectionColors } from '../../lib/sharedStore';
 import { ComponentNode, type ComponentNodeData } from './ComponentNode';
 
@@ -47,9 +45,6 @@ function DragDropCanvasInner() {
     toggleShowConnections,
   } = useCanvasStore();
   const { setGenerationMode, setEditingComponentName, startFixing } = useGenerationStore();
-
-  // Track Cmd/Ctrl key for edit mode
-  const cmdKeyHeld = useCmdKey();
 
   // ============================================
   // KEYBOARD: Delete key to remove selected items
@@ -328,7 +323,7 @@ function DragDropCanvasInner() {
           onPaneClick={handlePaneClick}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
-          nodesDraggable={cmdKeyHeld}
+          nodesDraggable={true}
           multiSelectionKeyCode={null}
           selectionOnDrag={false}
           fitView={false}

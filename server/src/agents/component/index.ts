@@ -99,8 +99,8 @@ export class ComponentAgent extends BaseAgent {
     for (let i = history.length - 1; i >= 0; i--) {
       const event = history[i];
       if (event.type === 'tool_result' &&
-          event.data?.toolName === 'plan_components' &&
-          event.data?.result) {
+        event.data?.toolName === 'plan_components' &&
+        event.data?.result) {
         const result = event.data.result as { plan?: ComponentPlan[] };
         if (result.plan) {
           lastPlan = result.plan;

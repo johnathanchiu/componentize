@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Brain, Wrench, CheckCircle, XCircle, Sparkles, Pencil, WrenchIcon, Code, ChevronDown, ChevronUp, User } from 'lucide-react';
+import { Brain, Wrench, CheckCircle, XCircle, Code, ChevronDown, ChevronUp, User } from 'lucide-react';
 import type { StreamEvent } from '../types';
 
 interface TimelineEventProps {
