@@ -50,6 +50,7 @@ export const appConfig = {
 
   rateLimit: {
     windowMs: config.RATE_LIMIT_WINDOW_MS,
-    max: config.RATE_LIMIT_MAX_REQUESTS,
+    // Disable rate limiting in development
+    max: config.NODE_ENV === 'development' ? 0 : config.RATE_LIMIT_MAX_REQUESTS,
   },
 };

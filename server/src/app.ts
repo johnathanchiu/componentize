@@ -26,11 +26,13 @@ export async function createApp() {
     credentials: true,
   });
 
-  // Register rate limiting
-  await server.register(rateLimit, {
-    max: appConfig.rateLimit.max,
-    timeWindow: appConfig.rateLimit.windowMs,
-  });
+  // Register rate limiting (skip in development)
+  if (!appConfig.isDevelopment) {
+    await server.register(rateLimit, {
+      max: appConfig.rateLimit.max,
+      timeWindow: appConfig.rateLimit.windowMs,
+    });
+  }
 
   // Register all routes
   registerRoutes(server);

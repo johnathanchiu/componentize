@@ -22,6 +22,11 @@ interface Position {
   y: number;
 }
 
+interface Size {
+  width: number;
+  height: number;
+}
+
 // Size estimates for different element types
 const SIZE_ESTIMATES: Record<string, { width: number; height: number }> = {
   Button: { width: 150, height: 50 },
@@ -39,16 +44,26 @@ const SIZE_ESTIMATES: Record<string, { width: number; height: number }> = {
   default: { width: 200, height: 100 },
 };
 
-// Spacing between decomposed components
+// Spacing between decomposed components (used when no originalSize provided)
 const VERTICAL_SPACING = 20;
+
+// Small gap between pieces when fitting within original bounds
+const INNER_GAP = 5;
 
 /**
  * Decompose a complex component into smaller atomic pieces
+ *
+ * @param code - The component source code
+ * @param originalName - The name of the original component
+ * @param basePosition - The position of the original component on canvas
+ * @param originalSize - Optional: the size of the original component.
+ *                       If provided, pieces will be fit within this bounding box.
  */
 export function decomposeComponent(
   code: string,
   originalName: string,
-  basePosition: Position
+  basePosition: Position,
+  originalSize?: Size
 ): DecomposedComponent[] {
   const components: DecomposedComponent[] = [];
   const collectedImports: t.ImportDeclaration[] = [];
@@ -72,8 +87,6 @@ export function decomposeComponent(
   });
 
   // 2. Find the return statement and extract children
-  let currentY = basePosition.y;
-
   traverse(ast, {
     ReturnStatement(path) {
       const arg = path.node.argument;
@@ -89,33 +102,57 @@ export function decomposeComponent(
         return;
       }
 
-      // Extract each child as its own component
-      children.forEach((child, index) => {
+      // First pass: estimate sizes for all children
+      const childData = children.map((child, index) => {
         const elementName = getElementName(child);
         const componentName = generateComponentName(originalName, elementName, index, children.length);
-
-        // Find which imports this child needs
         const usedIdentifiers = collectUsedIdentifiers(child);
         const neededImports = filterImportsForIdentifiers(collectedImports, usedIdentifiers);
-
-        // Build new component
         const componentCode = buildComponentCode(componentName, child, neededImports);
+        const estimatedSize = estimateSize(child);
 
-        // Calculate position and size
-        const size = estimateSize(child);
-        const position = {
-          x: basePosition.x,
-          y: currentY,
-        };
-        currentY += size.height + VERTICAL_SPACING;
-
-        components.push({
-          name: componentName,
-          code: componentCode,
-          position,
-          size,
-        });
+        return { child, componentName, componentCode, estimatedSize };
       });
+
+      // Calculate positions - either within original bounds or stacking vertically
+      if (originalSize) {
+        // Fit within original bounding box
+        const totalGaps = (children.length - 1) * INNER_GAP;
+        const availableHeight = originalSize.height - totalGaps;
+        const totalEstimatedHeight = childData.reduce((sum, c) => sum + c.estimatedSize.height, 0);
+
+        // Scale factor to fit everything in the available height
+        const scale = Math.min(1, availableHeight / totalEstimatedHeight);
+
+        let currentY = basePosition.y;
+
+        childData.forEach((data) => {
+          const scaledHeight = Math.round(data.estimatedSize.height * scale);
+
+          components.push({
+            name: data.componentName,
+            code: data.componentCode,
+            position: { x: basePosition.x, y: currentY },
+            size: { width: originalSize.width, height: scaledHeight }
+          });
+
+          currentY += scaledHeight + INNER_GAP;
+        });
+      } else {
+        // No original size - stack vertically with spacing
+        let currentY = basePosition.y;
+
+        childData.forEach((data) => {
+          components.push({
+            name: data.componentName,
+            code: data.componentCode,
+            position: { x: basePosition.x, y: currentY },
+            size: data.estimatedSize
+          });
+
+          currentY += data.estimatedSize.height + VERTICAL_SPACING;
+        });
+      }
     },
   });
 
@@ -253,14 +290,15 @@ function buildComponentCode(
   jsxElement: t.JSXElement,
   imports: t.ImportDeclaration[]
 ): string {
-  // Wrap the JSX in a w-full h-full div for canvas compatibility
+  // Wrap the JSX in a centered container for canvas compatibility
+  // Using flex + items-center + justify-center to maintain centering from parent
   const wrappedJsx = t.jsxElement(
     t.jsxOpeningElement(
       t.jsxIdentifier('div'),
       [
         t.jsxAttribute(
           t.jsxIdentifier('className'),
-          t.stringLiteral('w-full h-full')
+          t.stringLiteral('w-full h-full flex items-center justify-center')
         ),
       ]
     ),

@@ -312,11 +312,13 @@ When writing React components:
 
         // Handle tool use - tools were already executed during streaming
         if (response.stop_reason === 'tool_use') {
-          // Add assistant response to messages
-          messages.push({
-            role: 'assistant',
-            content: response.content,
-          });
+          // Add assistant response to messages (only if content is non-empty)
+          if (response.content && response.content.length > 0) {
+            messages.push({
+              role: 'assistant',
+              content: response.content,
+            });
+          }
 
           // Check if any tool execution triggered early exit
           const exitTool = pendingToolUses.find(t => t.shouldExit);
@@ -362,10 +364,12 @@ When writing React components:
         } else if (response.stop_reason === 'end_turn') {
           // Claude finished without using tools - this shouldn't happen with tool_choice: any
           // But if it does, force tool use more aggressively
-          messages.push({
-            role: 'assistant',
-            content: response.content,
-          });
+          if (response.content && response.content.length > 0) {
+            messages.push({
+              role: 'assistant',
+              content: response.content,
+            });
+          }
 
           messages.push({
             role: 'user',

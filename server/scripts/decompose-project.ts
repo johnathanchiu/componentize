@@ -58,8 +58,8 @@ async function main() {
 
     console.log(`\n🔧 ${name}: Complex - ${complexity.reasons.join(', ')}`);
 
-    // Try to decompose
-    const decomposed = decomposeComponent(code, name, canvasItem.position);
+    // Try to decompose - pass original size so pieces fit within the bounding box
+    const decomposed = decomposeComponent(code, name, canvasItem.position, canvasItem.size);
 
     if (decomposed.length <= 1) {
       console.log(`   Could not decompose, keeping as-is`);
