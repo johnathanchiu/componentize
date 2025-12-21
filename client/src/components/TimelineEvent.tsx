@@ -9,8 +9,13 @@ interface TimelineEventProps {
 export function TimelineEvent({ event }: TimelineEventProps) {
   const [isCodeExpanded, setIsCodeExpanded] = useState(false);
 
-  // Session divider - skip rendering
-  if (event.type === 'session_start') {
+  // Session divider and turn_start - skip rendering (handled by block accumulation)
+  if (event.type === 'session_start' || event.type === 'turn_start') {
+    return null;
+  }
+
+  // thinking_delta - skip rendering (accumulated into currentBlock.thinking)
+  if (event.type === 'thinking_delta') {
     return null;
   }
 
@@ -31,7 +36,8 @@ export function TimelineEvent({ event }: TimelineEventProps) {
   }
 
   // Code streaming event - show partial code with line count
-  if (event.type === 'code_streaming') {
+  // Handles both new code_delta and legacy code_streaming
+  if (event.type === 'code_streaming' || event.type === 'code_delta') {
     return (
       <div className="flex items-start gap-2 px-3 py-2 border-l-2 border-l-blue-400 bg-blue-50/50 animate-pulse">
         <div className="mt-0.5 flex-shrink-0">
@@ -96,12 +102,15 @@ export function TimelineEvent({ event }: TimelineEventProps) {
 
   const getEventStyle = () => {
     switch (event.type) {
+      // Legacy thinking event
       case 'thinking':
         return {
           icon: <Brain className="w-3.5 h-3.5 text-ai-thinking" />,
           borderClass: 'border-l-ai-thinking',
           bgClass: 'bg-ai-thinking/5',
         };
+      // New tool_call event (replaces tool_start)
+      case 'tool_call':
       case 'tool_start':
         return {
           icon: <Wrench className="w-3.5 h-3.5 text-ai-action" />,
@@ -116,6 +125,16 @@ export function TimelineEvent({ event }: TimelineEventProps) {
             : <XCircle className="w-3.5 h-3.5 text-red-500" />,
           borderClass: isSuccess ? 'border-l-green-500' : 'border-l-red-500',
           bgClass: isSuccess ? 'bg-green-500/5' : 'bg-red-500/5',
+        };
+      // New complete event (replaces success)
+      case 'complete':
+        const completeSuccess = event.data?.status !== 'error';
+        return {
+          icon: completeSuccess
+            ? <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+            : <XCircle className="w-3.5 h-3.5 text-red-500" />,
+          borderClass: completeSuccess ? 'border-l-green-500' : 'border-l-red-500',
+          bgClass: completeSuccess ? 'bg-green-500/5' : 'bg-red-500/5',
         };
       case 'success':
         return {

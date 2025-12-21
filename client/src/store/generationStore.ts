@@ -2,9 +2,51 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { StreamEvent, StreamStatus, ComponentPlan, CanvasComponent, AgentTodo } from '../types/index';
 
+// Server-side conversation message format (from history.json)
+export interface ServerConversationMessage {
+  role: 'user' | 'assistant' | 'tool';
+  content: string;
+  timestamp: number;
+  thinking?: string;
+  toolCalls?: Array<{
+    id: string;
+    name: string;
+    args?: Record<string, unknown>;
+    status?: 'pending' | 'success' | 'error';
+    result?: unknown;
+  }>;
+  toolCallId?: string;
+}
+
 interface ErrorContext {
   message: string;
   stack?: string;
+}
+
+// Tool call state for block accumulation
+export interface ToolCallState {
+  id: string;
+  name: string;
+  args: unknown;
+  status: 'pending' | 'success' | 'error';
+  result?: unknown;
+}
+
+// Assistant block - accumulated from delta events
+export interface AssistantBlock {
+  thinking: string;           // Accumulated thinking_delta text
+  toolCalls: ToolCallState[]; // Tool calls in this turn
+}
+
+// Conversation message - groups events by turn for chat display
+export interface ConversationMessage {
+  id: string;
+  type: 'user' | 'assistant';
+  content: string;              // User prompt or assistant final text
+  thinking?: string;            // Accumulated thinking (for assistant)
+  toolCalls?: ToolCallState[];  // Tool calls in this turn
+  isStreaming?: boolean;        // Currently streaming
+  timestamp: number;
 }
 
 // Page generation status (merged from pageGenerationStore)
@@ -28,6 +70,25 @@ interface GenerationStore {
   editingComponentName: string | null;
   pendingFixError: ErrorContext | null;
   componentVersions: Record<string, number>;
+
+  // Block accumulation state (for delta-based streaming)
+  currentBlock: AssistantBlock | null;
+  startNewBlock: () => void;
+  appendThinkingDelta: (delta: string) => void;
+  addToolCall: (id: string, name: string, args: unknown) => void;
+  setToolResult: (toolCallId: string, status: 'success' | 'error', result: unknown) => void;
+  completeBlock: () => void;
+
+  // Conversation messages - grouped by turn for chat display
+  conversationMessages: ConversationMessage[];
+  addUserMessage: (content: string) => void;
+  startAssistantMessage: () => void;
+  updateCurrentAssistantThinking: (thinking: string) => void;
+  updateCurrentAssistantToolCalls: (toolCalls: ToolCallState[]) => void;
+  completeAssistantMessage: (content?: string) => void;
+  clearConversation: () => void;
+  // Load conversation from server history
+  loadConversationFromHistory: (history: ServerConversationMessage[]) => void;
 
   // Agent-managed todos
   agentTodos: AgentTodo[];
@@ -94,6 +155,10 @@ export const useGenerationStore = create<GenerationStore>()(
           editingComponentName: null,
           pendingFixError: null,
           isGenerating: false,
+          // Reset block accumulation state
+          currentBlock: null,
+          // Reset conversation messages
+          conversationMessages: [],
           // Reset agent todos
           agentTodos: [],
           // Reset page generation state
@@ -123,6 +188,12 @@ export const useGenerationStore = create<GenerationStore>()(
       pendingFixError: null,
       componentVersions: {},
 
+      // Block accumulation state (for delta-based streaming)
+      currentBlock: null,
+
+      // Conversation messages - grouped by turn
+      conversationMessages: [],
+
       // Agent-managed todos
       agentTodos: [],
 
@@ -142,11 +213,17 @@ export const useGenerationStore = create<GenerationStore>()(
         set((state) => ({
           streamingEvents: [...state.streamingEvents, event],
           streamStatus:
+            // New delta-based events
+            event.type === 'turn_start' ? 'thinking' :
+            event.type === 'thinking_delta' ? 'thinking' :
+            event.type === 'tool_call' ? 'acting' :
+            event.type === 'complete' ? (event.data?.status === 'error' ? 'error' : 'success') :
+            // Legacy events (kept for backward compatibility)
             event.type === 'thinking' ? 'thinking' :
-              event.type === 'tool_start' || event.type === 'tool_result' ? 'acting' :
-                event.type === 'success' ? 'success' :
-                  event.type === 'error' ? 'error' :
-                    state.streamStatus,
+            event.type === 'tool_start' || event.type === 'tool_result' ? 'acting' :
+            event.type === 'success' ? 'success' :
+            event.type === 'error' ? 'error' :
+            state.streamStatus,
         })),
 
       setStreamingEvents: (events) => set({ streamingEvents: events }),
@@ -181,6 +258,140 @@ export const useGenerationStore = create<GenerationStore>()(
         isStreamPanelExpanded: true,
         pendingFixError: error || null,
       }),
+
+      // Block accumulation actions (for delta-based streaming)
+      startNewBlock: () => set({
+        currentBlock: { thinking: '', toolCalls: [] },
+        streamStatus: 'thinking',
+      }),
+
+      appendThinkingDelta: (delta) => set((state) => ({
+        currentBlock: state.currentBlock
+          ? { ...state.currentBlock, thinking: state.currentBlock.thinking + delta }
+          : { thinking: delta, toolCalls: [] }
+      })),
+
+      addToolCall: (id, name, args) => set((state) => ({
+        currentBlock: state.currentBlock
+          ? {
+              ...state.currentBlock,
+              toolCalls: [...state.currentBlock.toolCalls, { id, name, args, status: 'pending' as const }]
+            }
+          : { thinking: '', toolCalls: [{ id, name, args, status: 'pending' as const }] },
+        streamStatus: 'acting',
+      })),
+
+      setToolResult: (toolCallId, status, result) => set((state) => ({
+        currentBlock: state.currentBlock
+          ? {
+              ...state.currentBlock,
+              toolCalls: state.currentBlock.toolCalls.map(tc =>
+                tc.id === toolCallId ? { ...tc, status, result } : tc
+              )
+            }
+          : null
+      })),
+
+      completeBlock: () => set({ currentBlock: null }),
+
+      // Conversation message actions
+      addUserMessage: (content) => set((state) => ({
+        conversationMessages: [
+          ...state.conversationMessages,
+          {
+            id: `user-${Date.now()}`,
+            type: 'user' as const,
+            content,
+            timestamp: Date.now(),
+          }
+        ]
+      })),
+
+      startAssistantMessage: () => set((state) => ({
+        conversationMessages: [
+          ...state.conversationMessages,
+          {
+            id: `assistant-${Date.now()}`,
+            type: 'assistant' as const,
+            content: '',
+            thinking: '',
+            toolCalls: [],
+            isStreaming: true,
+            timestamp: Date.now(),
+          }
+        ]
+      })),
+
+      updateCurrentAssistantThinking: (thinking) => set((state) => {
+        const messages = [...state.conversationMessages];
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage && lastMessage.type === 'assistant') {
+          messages[messages.length - 1] = { ...lastMessage, thinking };
+        }
+        return { conversationMessages: messages };
+      }),
+
+      updateCurrentAssistantToolCalls: (toolCalls) => set((state) => {
+        const messages = [...state.conversationMessages];
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage && lastMessage.type === 'assistant') {
+          messages[messages.length - 1] = { ...lastMessage, toolCalls };
+        }
+        return { conversationMessages: messages };
+      }),
+
+      completeAssistantMessage: (content) => set((state) => {
+        const messages = [...state.conversationMessages];
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage && lastMessage.type === 'assistant') {
+          messages[messages.length - 1] = {
+            ...lastMessage,
+            content: content || lastMessage.content,
+            isStreaming: false,
+          };
+        }
+        return { conversationMessages: messages };
+      }),
+
+      clearConversation: () => set({ conversationMessages: [] }),
+
+      // Load conversation from server history format
+      loadConversationFromHistory: (history) => {
+        const messages: ConversationMessage[] = [];
+
+        for (const msg of history) {
+          if (msg.role === 'user') {
+            messages.push({
+              id: `user-${msg.timestamp}`,
+              type: 'user',
+              content: msg.content,
+              timestamp: msg.timestamp,
+            });
+          } else if (msg.role === 'assistant') {
+            // Convert server toolCalls to client ToolCallState format
+            const toolCalls: ToolCallState[] = (msg.toolCalls || []).map(tc => ({
+              id: tc.id,
+              name: tc.name,
+              args: tc.args || {},
+              status: tc.status || 'success',
+              result: tc.result,
+            }));
+
+            messages.push({
+              id: `assistant-${msg.timestamp}`,
+              type: 'assistant',
+              content: msg.content || '',
+              thinking: msg.thinking,
+              toolCalls,
+              isStreaming: false,
+              timestamp: msg.timestamp,
+            });
+          }
+          // Skip 'tool' messages - they're absorbed into assistant messages
+        }
+
+        set({ conversationMessages: messages });
+      },
 
       // Agent-managed todos
       setAgentTodos: (todos) => set({ agentTodos: todos }),
@@ -255,6 +466,7 @@ export const useGenerationStore = create<GenerationStore>()(
         // Only persist conversation-related state, not transient UI state
         currentProjectId: state.currentProjectId,
         streamingEvents: state.streamingEvents,
+        conversationMessages: state.conversationMessages,
         generationMode: state.generationMode,
         editingComponentName: state.editingComponentName,
         currentComponentName: state.currentComponentName,

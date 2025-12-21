@@ -17,12 +17,30 @@ export interface CanvasComponent {
   size?: { width: number; height: number };
 }
 
-// Stream event for conversation history
+// Stream event for real-time streaming
 export interface StreamEvent {
   type: string;
   message: string;
   timestamp: number;
   data?: Record<string, unknown>;
+}
+
+// Accumulated conversation message (like minecraftlm format)
+export interface ConversationMessage {
+  role: 'user' | 'assistant' | 'tool';
+  content: string;
+  timestamp: number;
+  // Assistant-specific fields
+  thinking?: string;
+  toolCalls?: Array<{
+    id: string;
+    name: string;
+    args?: Record<string, unknown>;
+    status?: 'pending' | 'success' | 'error';
+    result?: unknown;
+  }>;
+  // Tool result fields
+  toolCallId?: string;
 }
 
 class ProjectService {
@@ -177,35 +195,153 @@ class ProjectService {
   }
 
   /**
-   * Get the conversation history for a project
+   * Get the conversation history for a project (accumulated messages format)
    */
-  async getHistory(projectId: string): Promise<StreamEvent[]> {
+  async getHistory(projectId: string): Promise<ConversationMessage[]> {
     try {
       const historyPath = this.getHistoryPath(projectId);
       const content = await fs.readFile(historyPath, 'utf-8');
-      return JSON.parse(content) as StreamEvent[];
+      return JSON.parse(content) as ConversationMessage[];
     } catch {
       return [];
     }
   }
 
   /**
-   * Append events to the conversation history
+   * Convert raw stream events into accumulated conversation messages
+   * This creates the proper minecraftlm-style format for history persistence
+   */
+  convertEventsToMessages(events: StreamEvent[]): ConversationMessage[] {
+    const messages: ConversationMessage[] = [];
+    let currentAssistant: ConversationMessage | null = null;
+    let accumulatedThinking = '';
+    const toolCalls: Map<string, NonNullable<ConversationMessage['toolCalls']>[number]> = new Map();
+
+    for (const event of events) {
+      switch (event.type) {
+        case 'user_message':
+          // Save any pending assistant message first
+          if (currentAssistant) {
+            currentAssistant.thinking = accumulatedThinking || undefined;
+            currentAssistant.toolCalls = Array.from(toolCalls.values());
+            if (currentAssistant.thinking || currentAssistant.toolCalls.length > 0 || currentAssistant.content) {
+              messages.push(currentAssistant);
+            }
+          }
+          // Add user message
+          messages.push({
+            role: 'user',
+            content: event.data?.prompt as string || event.message,
+            timestamp: event.timestamp,
+          });
+          // Reset for next assistant turn
+          currentAssistant = null;
+          accumulatedThinking = '';
+          toolCalls.clear();
+          break;
+
+        case 'turn_start':
+          // Start new assistant message if needed
+          if (!currentAssistant) {
+            currentAssistant = {
+              role: 'assistant',
+              content: '',
+              timestamp: event.timestamp,
+            };
+          } else if (accumulatedThinking) {
+            // Add separator for new turn's thinking (after tool results)
+            accumulatedThinking += '\n\n';
+          }
+          break;
+
+        case 'thinking_delta':
+          // Accumulate thinking text
+          accumulatedThinking += event.data?.content || event.message || '';
+          break;
+
+        case 'tool_call':
+          // Record tool call
+          if (event.data?.toolUseId) {
+            toolCalls.set(event.data.toolUseId as string, {
+              id: event.data.toolUseId as string,
+              name: event.data.toolName as string,
+              status: 'pending',
+            });
+          }
+          break;
+
+        case 'tool_result':
+          // Update tool call with result
+          if (event.data?.toolUseId) {
+            const tc = toolCalls.get(event.data.toolUseId as string);
+            if (tc) {
+              tc.status = event.data.status as 'success' | 'error';
+              tc.result = event.data.result;
+            }
+          }
+          break;
+
+        case 'complete':
+        case 'success':
+          // Finalize assistant message
+          if (currentAssistant) {
+            // Only set content if there's explicit text content (not tool result messages)
+            // event.data?.content would be model text output, event.message is typically tool result
+            currentAssistant.content = (event.data?.content as string) || '';
+            currentAssistant.thinking = accumulatedThinking || undefined;
+            currentAssistant.toolCalls = Array.from(toolCalls.values());
+            messages.push(currentAssistant);
+            currentAssistant = null;
+            accumulatedThinking = '';
+            toolCalls.clear();
+          }
+          break;
+
+        case 'error':
+          // Finalize with error
+          if (currentAssistant) {
+            currentAssistant.content = `Error: ${event.message}`;
+            currentAssistant.thinking = accumulatedThinking || undefined;
+            currentAssistant.toolCalls = Array.from(toolCalls.values());
+            messages.push(currentAssistant);
+            currentAssistant = null;
+            accumulatedThinking = '';
+            toolCalls.clear();
+          }
+          break;
+      }
+    }
+
+    // Handle any remaining assistant message
+    if (currentAssistant) {
+      currentAssistant.thinking = accumulatedThinking || undefined;
+      currentAssistant.toolCalls = Array.from(toolCalls.values());
+      if (currentAssistant.thinking || currentAssistant.toolCalls.length > 0 || currentAssistant.content) {
+        messages.push(currentAssistant);
+      }
+    }
+
+    return messages;
+  }
+
+  /**
+   * Append raw stream events to history (converts to messages first)
    */
   async appendHistory(projectId: string, events: StreamEvent[]): Promise<void> {
     const historyPath = this.getHistoryPath(projectId);
     const existing = await this.getHistory(projectId);
-    const updated = [...existing, ...events];
+    const newMessages = this.convertEventsToMessages(events);
+    const updated = [...existing, ...newMessages];
     await fs.writeFile(historyPath, JSON.stringify(updated, null, 2));
   }
 
   /**
-   * Append a single event to the conversation history
+   * Append a single conversation message to history
    */
-  async appendHistoryEvent(projectId: string, event: StreamEvent): Promise<void> {
+  async appendHistoryMessage(projectId: string, message: ConversationMessage): Promise<void> {
     const historyPath = this.getHistoryPath(projectId);
     const existing = await this.getHistory(projectId);
-    existing.push(event);
+    existing.push(message);
     await fs.writeFile(historyPath, JSON.stringify(existing, null, 2));
   }
 

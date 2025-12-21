@@ -6,7 +6,7 @@ import { useGenerationStore } from '../store/generationStore';
 import { useProjectStore } from '../store/projectStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ResizeHandle } from './ResizeHandle';
-import { Timeline } from './Timeline';
+import { ChatPanel } from './ChatPanel';
 import { loadComponent } from '../lib/componentRenderer';
 import type { Size } from '../types/index';
 
@@ -39,6 +39,16 @@ function CreateTab() {
     setPendingFixError,
     incrementComponentVersion,
     setAgentTodos,
+    // Block accumulation actions for delta-based streaming
+    startNewBlock,
+    appendThinkingDelta,
+    addToolCall,
+    setToolResult,
+    completeBlock,
+    // Conversation message actions
+    addUserMessage,
+    startAssistantMessage,
+    completeAssistantMessage,
   } = useGenerationStore();
 
   // Reset form when switching modes
@@ -70,22 +80,8 @@ function CreateTab() {
 
     setError('');
 
-    // Add session divider
-    addStreamingEvent({
-      type: 'session_start',
-      message: 'Generating components',
-      timestamp: Date.now(),
-      data: { mode: 'create', componentName: 'components' },
-    });
-
-    // Add user message to timeline
-    addStreamingEvent({
-      type: 'user_message',
-      message: promptText,
-      timestamp: Date.now(),
-      data: { prompt: promptText },
-    });
-
+    // Note: session_start and user_message events come from the server now
+    // to avoid duplication
     setCurrentComponentName('components');
     setIsGenerating(true);
     setStreamPanelExpanded(true);
@@ -99,7 +95,7 @@ function CreateTab() {
       }
 
       const stream = generateStream(currentProject.id, promptText);
-      await handleStreamResponse(stream, true);
+      await handleStreamResponse(stream, true, promptText);
     } catch (err) {
       setError('Network error. Make sure the backend server is running.');
       setStreamStatus('error');
@@ -118,42 +114,102 @@ function CreateTab() {
   // Shared function to handle streaming response
   const handleStreamResponse = async (
     stream: AsyncGenerator<any>,
-    isCreateMode: boolean
+    isCreateMode: boolean,
+    userPrompt: string
   ) => {
+    // Add user message to conversation
+    addUserMessage(userPrompt);
+    // Start assistant message for streaming
+    startAssistantMessage();
+
     for await (const event of stream) {
+      // Always add to streaming events for timeline rendering (backward compat)
       addStreamingEvent(event);
 
-      // Handle todo_update events from agent
-      if (event.type === 'todo_update' && event.data?.todos) {
-        setAgentTodos(event.data.todos);
-      }
+      // Handle new delta-based events for block accumulation
+      switch (event.type) {
+        case 'turn_start':
+          startNewBlock();
+          break;
 
-      // Handle canvas_update events to add new components
-      if (event.type === 'canvas_update' && event.data?.canvasComponent) {
-        const comp = event.data.canvasComponent;
-        // Add to library
-        addAvailableComponent({ name: comp.componentName, filepath: '' });
-        // Add to canvas with position from agent
-        addToCanvas(comp);
-        incrementComponentVersion(comp.componentName);
-        setCurrentComponentName(comp.componentName);
-      }
+        case 'thinking_delta':
+          if (event.data?.content) {
+            appendThinkingDelta(event.data.content);
+          }
+          break;
 
-      if (event.type === 'success') {
-        // Clear form after delay
-        setTimeout(() => {
-          setPrompt('');
-          // Auto-collapse after success
+        case 'tool_call':
+          if (event.data?.toolUseId && event.data?.toolName) {
+            addToolCall(event.data.toolUseId, event.data.toolName, event.data.toolInput || {});
+          }
+          break;
+
+        case 'tool_result':
+          if (event.data?.toolUseId) {
+            setToolResult(
+              event.data.toolUseId,
+              event.data.status || 'success',
+              event.data.result
+            );
+          }
+          break;
+
+        case 'todo_update':
+          if (event.data?.todos) {
+            setAgentTodos(event.data.todos);
+          }
+          break;
+
+        case 'canvas_update':
+          if (event.data?.canvasComponent) {
+            const comp = event.data.canvasComponent;
+            addAvailableComponent({ name: comp.componentName, filepath: '' });
+            addToCanvas(comp);
+            incrementComponentVersion(comp.componentName);
+            setCurrentComponentName(comp.componentName);
+          }
+          break;
+
+        case 'complete':
+          completeBlock();
+          completeAssistantMessage();
+          // Clear todos on successful completion
+          setAgentTodos([]);
+          // Clear form after delay
           setTimeout(() => {
-            setStreamPanelExpanded(false);
-            if (!isCreateMode) {
-              setGenerationMode('create');
-              setEditingComponentName(null);
-            }
-          }, 2000);
-        }, 1000);
-      } else if (event.type === 'error') {
-        setError(event.message);
+            setPrompt('');
+            // Auto-collapse after success
+            setTimeout(() => {
+              setStreamPanelExpanded(false);
+              if (!isCreateMode) {
+                setGenerationMode('create');
+                setEditingComponentName(null);
+              }
+            }, 2000);
+          }, 1000);
+          break;
+
+        case 'error':
+          completeBlock();
+          completeAssistantMessage();
+          setError(event.message);
+          break;
+
+        // Legacy event handling (for backward compatibility)
+        case 'success':
+          completeAssistantMessage();
+          setAgentTodos([]);
+          setTimeout(() => {
+            setPrompt('');
+            setTimeout(() => {
+              setStreamPanelExpanded(false);
+              if (!isCreateMode) {
+                setGenerationMode('create');
+                setEditingComponentName(null);
+              }
+            }, 2000);
+          }, 1000);
+          break;
       }
     }
   };
@@ -162,14 +218,7 @@ function CreateTab() {
   const runFix = async (targetName: string, errorMessage: string, errorStack?: string) => {
     setError('');
 
-    // Add session divider instead of clearing
-    addStreamingEvent({
-      type: 'session_start',
-      message: `Fixing ${targetName}`,
-      timestamp: Date.now(),
-      data: { mode: 'fix', componentName: targetName },
-    });
-
+    // Note: session_start and user_message events come from the server now
     setCurrentComponentName(targetName);
     setIsGenerating(true);
     setStreamPanelExpanded(true);
@@ -196,7 +245,7 @@ Call read_component to see the code, find the bug, and call update_component wit
         return;
       }
       const stream = editProjectComponentStream(currentProject.id, targetName, fixPrompt);
-      await handleStreamResponse(stream, false);
+      await handleStreamResponse(stream, false, fixPrompt);
     } catch (err) {
       setError('Network error. Make sure the backend server is running.');
       setStreamStatus('error');
@@ -214,24 +263,9 @@ Call read_component to see the code, find the bug, and call update_component wit
 
     setError('');
 
-    // Add session divider
-    const modeLabel = generationMode === 'create' ? 'Generating' : 'Editing';
+    // Note: session_start and user_message events come from the server now
+    // to avoid duplication
     const targetLabel = generationMode === 'create' ? 'components' : editingComponentName!;
-    addStreamingEvent({
-      type: 'session_start',
-      message: `${modeLabel} ${targetLabel}`,
-      timestamp: Date.now(),
-      data: { mode: generationMode, componentName: targetLabel },
-    });
-
-    // Add user message to timeline
-    addStreamingEvent({
-      type: 'user_message',
-      message: prompt,
-      timestamp: Date.now(),
-      data: { prompt },
-    });
-
     setCurrentComponentName(targetLabel);
     setIsGenerating(true);
     setStreamPanelExpanded(true);
@@ -249,7 +283,7 @@ Call read_component to see the code, find the bug, and call update_component wit
         ? generateStream(currentProject.id, prompt)
         : editProjectComponentStream(currentProject.id, editingComponentName!, prompt);
 
-      await handleStreamResponse(stream, generationMode === 'create');
+      await handleStreamResponse(stream, generationMode === 'create', prompt);
     } catch (err) {
       setError('Network error. Make sure the backend server is running.');
       setStreamStatus('error');
@@ -300,10 +334,10 @@ Call read_component to see the code, find the bug, and call update_component wit
 
   return (
     <div className="flex flex-col h-full">
-      {/* Chat/Timeline area - fills available space */}
+      {/* Chat area - fills available space */}
       <div className="flex-1 min-h-0 flex flex-col">
         <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
-          <Timeline events={streamingEvents} />
+          <ChatPanel />
         </div>
 
         {isEditMode && (
@@ -446,9 +480,17 @@ class ComponentErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBo
   }
 }
 
-function DraggableComponentCard({ name, projectId, onDelete }: { name: string; projectId: string; onDelete: () => void }) {
+interface DraggableComponentCardProps {
+  name: string;
+  projectId: string;
+  onDelete: () => void;
+  onError?: (componentName: string, error: string) => void;
+  onSuccess?: (componentName: string) => void;
+}
+
+function DraggableComponentCard({ name, projectId, onDelete, onError, onSuccess }: DraggableComponentCardProps) {
   const [isDragging, setIsDragging] = useState(false);
-  const { componentVersions } = useGenerationStore();
+  const { componentVersions, startFixing } = useGenerationStore();
   const componentVersion = componentVersions[name] || 0;
   const [Component, setComponent] = useState<ComponentType | null>(null);
   const [naturalSize, setNaturalSize] = useState<Size | null>(null);
@@ -465,12 +507,24 @@ function DraggableComponentCard({ name, projectId, onDelete }: { name: string; p
       .then((comp) => {
         setComponent(() => comp);
         setLoading(false);
+        // Don't call onSuccess yet - wait for actual render
       })
       .catch((err) => {
         console.error('Failed to load component for preview:', err);
         setLoading(false);
+        onError?.(name, err.message || 'Failed to load component');
       });
   }, [projectId, name, componentVersion]);
+
+  // Report render errors to parent
+  useEffect(() => {
+    if (renderError) {
+      onError?.(name, renderError);
+    } else if (!loading && Component && !renderError) {
+      // Component loaded and rendered successfully
+      onSuccess?.(name);
+    }
+  }, [renderError, loading, Component, name, onError, onSuccess]);
 
   // Measure component's natural size using ResizeObserver
   useEffect(() => {
@@ -549,16 +603,38 @@ function DraggableComponentCard({ name, projectId, onDelete }: { name: string; p
           <div className="text-xs text-neutral-400">Loading...</div>
         )}
         {!loading && renderError && (
-          <div className="text-xs text-red-500 text-center px-2">
+          <div className="text-xs text-red-500 text-center px-2 pointer-events-auto">
             <div className="font-medium">Render error</div>
             <div className="text-red-400 truncate" title={renderError}>{renderError}</div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                startFixing(name, { message: renderError });
+              }}
+              className="mt-1.5 px-2 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-medium transition-colors"
+            >
+              <Wrench className="w-3 h-3 inline mr-1" />
+              Fix
+            </button>
           </div>
         )}
         {!loading && !renderError && Component && (
           <ComponentErrorBoundary
             fallback={
-              <div className="text-xs text-red-500 text-center px-2">
+              <div className="text-xs text-red-500 text-center px-2 pointer-events-auto">
                 <div className="font-medium">Component crashed</div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    startFixing(name, { message: 'Component crashed during render' });
+                  }}
+                  className="mt-1.5 px-2 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-medium transition-colors"
+                >
+                  <Wrench className="w-3 h-3 inline mr-1" />
+                  Fix
+                </button>
               </div>
             }
             onError={(err) => setRenderError(err.message)}
@@ -587,6 +663,32 @@ function DraggableComponentCard({ name, projectId, onDelete }: { name: string; p
 
 function LibraryTab() {
   const { currentProject, availableComponents, setAvailableComponents, removeAvailableComponent } = useProjectStore();
+  const { startFixing, isGenerating } = useGenerationStore();
+  const [brokenComponents, setBrokenComponents] = useState<Map<string, string>>(new Map());
+
+  // Track when a component reports an error
+  const handleComponentError = (componentName: string, error: string) => {
+    setBrokenComponents(prev => new Map(prev).set(componentName, error));
+  };
+
+  // Clear error when component loads successfully
+  const handleComponentSuccess = (componentName: string) => {
+    setBrokenComponents(prev => {
+      const next = new Map(prev);
+      next.delete(componentName);
+      return next;
+    });
+  };
+
+  // Fix all broken components sequentially
+  const handleFixAll = async () => {
+    const brokenList = Array.from(brokenComponents.entries());
+    if (brokenList.length === 0) return;
+
+    // Start fixing the first one - the rest will be queued via the fix flow
+    const [firstName, firstError] = brokenList[0];
+    startFixing(firstName, { message: firstError });
+  };
 
   const loadComponents = async () => {
     if (!currentProject) return;
@@ -605,6 +707,12 @@ function LibraryTab() {
     try {
       await deleteProjectComponent(currentProject.id, componentName);
       removeAvailableComponent(componentName);
+      // Also remove from broken components if it was there
+      setBrokenComponents(prev => {
+        const next = new Map(prev);
+        next.delete(componentName);
+        return next;
+      });
     } catch (err) {
       console.error('Failed to delete component:', err);
     }
@@ -622,20 +730,38 @@ function LibraryTab() {
     );
   }
 
+  const brokenCount = brokenComponents.size;
+
   return (
     <div className="flex flex-col h-full">
-      {/* Header with refresh */}
+      {/* Header with refresh and Fix All */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-100">
         <span className="text-xs text-neutral-500">
           {availableComponents.length} component{availableComponents.length !== 1 ? 's' : ''}
+          {brokenCount > 0 && (
+            <span className="ml-1 text-red-500">({brokenCount} broken)</span>
+          )}
         </span>
-        <button
-          onClick={loadComponents}
-          className="p-1 hover:bg-neutral-100 rounded transition-colors"
-          title="Refresh components"
-        >
-          <RefreshCw className="w-3.5 h-3.5 text-neutral-400" />
-        </button>
+        <div className="flex items-center gap-1">
+          {brokenCount > 0 && (
+            <button
+              onClick={handleFixAll}
+              disabled={isGenerating}
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={`Fix all ${brokenCount} broken component${brokenCount !== 1 ? 's' : ''}`}
+            >
+              <Wrench className="w-3 h-3" />
+              Fix All
+            </button>
+          )}
+          <button
+            onClick={loadComponents}
+            className="p-1 hover:bg-neutral-100 rounded transition-colors"
+            title="Refresh components"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-neutral-400" />
+          </button>
+        </div>
       </div>
 
       {/* Component list with previews */}
@@ -646,6 +772,8 @@ function LibraryTab() {
             name={component.name}
             projectId={currentProject.id}
             onDelete={() => handleDeleteComponent(component.name)}
+            onError={handleComponentError}
+            onSuccess={handleComponentSuccess}
           />
         ))}
 

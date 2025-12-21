@@ -80,33 +80,37 @@ export class ComponentAgent extends BaseAgent {
 
     const history = await projectService.getHistory(this.projectId);
 
-    // Find the last todo_update event to get current task state
-    let lastTodos: AgentTodo[] = [];
-    for (let i = history.length - 1; i >= 0; i--) {
-      if (history[i].type === 'todo_update' && history[i].data?.todos) {
-        lastTodos = history[i].data!.todos as AgentTodo[];
-        break;
-      }
-    }
-
     // Extract previous user messages for context
     const previousUserMessages = history
-      .filter(e => e.type === 'user_message')
-      .map(e => e.message);
+      .filter(msg => msg.role === 'user')
+      .map(msg => msg.content);
 
-    // Find the last plan_components result
+    // Find the last tool calls to extract todos and plans
+    let lastTodos: AgentTodo[] = [];
     let lastPlan: ComponentPlan[] | null = null;
+
     for (let i = history.length - 1; i >= 0; i--) {
-      const event = history[i];
-      if (event.type === 'tool_result' &&
-        event.data?.toolName === 'plan_components' &&
-        event.data?.result) {
-        const result = event.data.result as { plan?: ComponentPlan[] };
-        if (result.plan) {
-          lastPlan = result.plan;
-          break;
+      const msg = history[i];
+      if (msg.role === 'assistant' && msg.toolCalls) {
+        for (const tc of msg.toolCalls) {
+          // Look for update_todos result
+          if (tc.name === 'update_todos' && tc.result && !lastTodos.length) {
+            const result = tc.result as { todos?: AgentTodo[] };
+            if (result.todos) {
+              lastTodos = result.todos;
+            }
+          }
+          // Look for plan_components result
+          if (tc.name === 'plan_components' && tc.result && !lastPlan) {
+            const result = tc.result as { plan?: ComponentPlan[] };
+            if (result.plan) {
+              lastPlan = result.plan;
+            }
+          }
         }
       }
+      // Stop once we have both
+      if (lastTodos.length && lastPlan) break;
     }
 
     return { lastTodos, previousUserMessages, lastPlan };

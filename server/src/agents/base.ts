@@ -107,6 +107,13 @@ When writing React components:
   /**
    * Common agent loop with real streaming
    * Yields progress events as the agent works, including Claude's thinking
+   *
+   * Uses delta-based streaming pattern:
+   * - turn_start: New iteration starting
+   * - thinking_delta: Incremental text tokens
+   * - tool_call: Tool being invoked
+   * - tool_result: Tool execution result
+   * - complete: Task finished (success or error)
    */
   protected async *runAgentLoop(
     messages: Anthropic.MessageParam[],
@@ -117,15 +124,23 @@ When writing React components:
     while (iteration < appConfig.api.maxIterations) {
       iteration++;
 
+      // Emit turn_start at the beginning of each iteration
+      yield {
+        type: 'turn_start',
+        message: `Starting iteration ${iteration}`,
+        timestamp: Date.now(),
+        data: { iteration, maxIterations: appConfig.api.maxIterations }
+      };
+
       try {
-        // Create streaming request with system prompt and tool choice
+        // Create streaming request with system prompt
+        // Always use 'auto' tool_choice - let Claude decide when to use tools
         const stream = this.client.messages.stream({
           model: appConfig.api.modelName,
           max_tokens: appConfig.api.maxTokens,
           system: this.systemPrompt,
           tools: this.tools,
-          // Force tool use on first iteration, then allow any
-          tool_choice: iteration === 1 ? { type: 'any' } : { type: 'auto' },
+          tool_choice: { type: 'auto' },
           messages,
         });
 
@@ -146,14 +161,14 @@ When writing React components:
                 // Text block starting - Claude is about to reason
                 accumulatedText = '';
               } else if (event.content_block.type === 'tool_use') {
-                // Tool use block starting
+                // Tool use block starting - emit tool_call event
                 currentToolUse = {
                   id: event.content_block.id,
                   name: event.content_block.name,
                   inputJson: '',
                 };
                 yield {
-                  type: 'tool_start',
+                  type: 'tool_call',
                   message: `Calling ${event.content_block.name}...`,
                   timestamp,
                   data: {
@@ -166,18 +181,17 @@ When writing React components:
 
             case 'content_block_delta':
               if (event.delta.type === 'text_delta') {
-                // Claude is streaming text - emit in meaningful chunks
-                accumulatedText += event.delta.text;
+                // Claude is streaming text - emit each delta immediately for smooth UX
+                const delta = event.delta.text;
+                accumulatedText += delta;
 
-                if (this.shouldEmitThinkingChunk(accumulatedText)) {
-                  yield {
-                    type: 'thinking',
-                    message: accumulatedText.trim(),
-                    timestamp,
-                    data: { content: accumulatedText.trim() }
-                  };
-                  accumulatedText = '';
-                }
+                // Emit thinking_delta for each token (frontend accumulates)
+                yield {
+                  type: 'thinking_delta',
+                  message: delta,
+                  timestamp,
+                  data: { content: delta }
+                };
               } else if (event.delta.type === 'input_json_delta') {
                 // Tool input is being streamed - emit code chunks periodically
                 if (currentToolUse) {
@@ -196,7 +210,7 @@ When writing React components:
                         .replace(/\\\\/g, '\\');
 
                       yield {
-                        type: 'code_streaming',
+                        type: 'code_delta',
                         message: 'Generating code...',
                         timestamp,
                         data: {
@@ -213,16 +227,9 @@ When writing React components:
               break;
 
             case 'content_block_stop':
-              // Emit any remaining accumulated thinking
-              if (accumulatedText.trim()) {
-                yield {
-                  type: 'thinking',
-                  message: accumulatedText.trim(),
-                  timestamp,
-                  data: { content: accumulatedText.trim() }
-                };
-                accumulatedText = '';
-              }
+              // Note: We no longer emit accumulated thinking here since we emit deltas above
+              // Just reset the accumulator
+              accumulatedText = '';
 
               // If we finished a tool use block, parse and EXECUTE immediately
               // This enables incremental canvas updates during streaming
@@ -362,28 +369,40 @@ When writing React components:
           };
 
         } else if (response.stop_reason === 'end_turn') {
-          // Claude finished without using tools - this shouldn't happen with tool_choice: any
-          // But if it does, force tool use more aggressively
-          if (response.content && response.content.length > 0) {
-            messages.push({
-              role: 'assistant',
-              content: response.content,
-            });
-          }
+          // CLAUDE IS DONE - natural completion
+          // end_turn means Claude has finished its response without calling tools
+          // This is the correct way for the agent to signal task completion
 
-          messages.push({
-            role: 'user',
-            content: 'You MUST call a tool now. Do not respond with text - call the appropriate tool immediately with the complete code.',
-          });
+          // Extract any final text message from Claude
+          const finalText = response.content
+            .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+            .map(block => block.text)
+            .join('\n')
+            .trim();
 
           yield {
-            type: 'progress',
-            message: 'Requesting tool execution...',
+            type: 'complete',
+            message: finalText || 'Task completed',
             timestamp: Date.now(),
+            data: {
+              status: 'success',
+              content: finalText,
+            }
           };
+          return; // EXIT LOOP - task is done
+
+        } else if (response.stop_reason === 'stop_sequence') {
+          // User-defined stop sequence hit - treat as completion
+          yield {
+            type: 'complete',
+            message: 'Task completed (stop sequence)',
+            timestamp: Date.now(),
+            data: { status: 'success' }
+          };
+          return;
 
         } else {
-          // Other stop reason
+          // Other unexpected stop reason
           yield {
             type: 'error',
             message: `Agent stopped unexpectedly: ${response.stop_reason}`,
@@ -404,9 +423,10 @@ When writing React components:
 
     // Max iterations reached
     yield {
-      type: 'error',
-      message: 'Operation exceeded maximum iterations',
+      type: 'complete',
+      message: 'Max iterations reached',
       timestamp: Date.now(),
+      data: { status: 'error', reason: 'max_iterations' }
     };
   }
 

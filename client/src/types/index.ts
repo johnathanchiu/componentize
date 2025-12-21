@@ -39,23 +39,32 @@ export interface ListComponentsResponse extends APIResponse {
   count?: number;
 }
 
-// Streaming events
+// Streaming events - new delta-based pattern
 export type StreamEventType =
+  // Session events
   | 'session_start'
   | 'user_message'
-  | 'progress'
-  | 'thinking'
-  | 'tool_start'
-  | 'tool_result'
-  | 'code_streaming'
-  | 'code_complete'
-  | 'success'
-  | 'error'
+  // New delta-based events (minecraftlm pattern)
+  | 'turn_start'         // New agent turn starting
+  | 'thinking_delta'     // Incremental thinking text (append to existing)
+  | 'tool_call'          // Tool being called (with id, name, args)
+  | 'tool_result'        // Tool execution completed
+  | 'code_delta'         // Incremental code generation
+  | 'canvas_update'      // Component placed on canvas
+  | 'todo_update'        // Agent-managed TODO list update
+  | 'complete'           // Task finished (success or error)
+  | 'error'              // Error occurred
+  // Legacy events (kept for backward compatibility)
+  | 'progress'           // Generic status updates
+  | 'thinking'           // Claude's reasoning text (full chunks) - legacy
+  | 'tool_start'         // Tool call initiated - legacy (use tool_call)
+  | 'code_streaming'     // Partial code being generated - legacy
+  | 'code_complete'      // Full code generation finished - legacy
+  | 'success'            // Final success - legacy (use complete)
+  // Page generation specific events
   | 'page_plan'
   | 'component_start'
-  | 'component_complete'
-  | 'canvas_update'
-  | 'todo_update';
+  | 'component_complete';
 
 export type StreamStatus = 'idle' | 'thinking' | 'acting' | 'success' | 'error';
 

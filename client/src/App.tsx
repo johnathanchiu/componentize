@@ -14,7 +14,7 @@ import { getProject } from './lib/api';
 function App() {
   const { clearCanvas, setCanvasDirectly, selectedComponentId, removeFromCanvas } = useCanvasStore();
   const { currentProject, setCurrentProject, setAvailableComponents } = useProjectStore();
-  const { setCurrentProjectId, clearStreamingEvents, setStreamingEvents } = useGenerationStore();
+  const { setCurrentProjectId, clearStreamingEvents, loadConversationFromHistory, clearConversation } = useGenerationStore();
   const [isLoading, setIsLoading] = useState(true);
 
   // Helper to load project with all data
@@ -27,9 +27,9 @@ function App() {
       setCanvasDirectly(result.canvas || [], projectId);
       // Set available components from consolidated response
       setAvailableComponents(result.components || []);
-      // Load conversation history
+      // Load conversation history from server (new accumulated format)
       if (result.history && result.history.length > 0) {
-        setStreamingEvents(result.history);
+        loadConversationFromHistory(result.history);
       }
       return result;
     } catch (error) {
@@ -60,7 +60,8 @@ function App() {
   const handleBackToProjects = () => {
     setCurrentProject(null);
     setCurrentProjectId(null); // Clear generation store project context
-    clearStreamingEvents(); // Clear conversation when leaving project
+    clearStreamingEvents(); // Clear streaming events
+    clearConversation(); // Clear conversation when leaving project
     clearCanvas();
     // Update URL without reload
     window.history.pushState({}, '', '/');
@@ -78,6 +79,7 @@ function App() {
         setCurrentProject(null);
         setCurrentProjectId(null);
         clearStreamingEvents();
+        clearConversation();
         clearCanvas();
       }
     };

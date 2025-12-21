@@ -107,20 +107,30 @@ export interface ExportFile {
 
 // Streaming Event Types
 export type StreamEventType =
-  | 'progress'           // Generic status updates
-  | 'thinking'           // Claude's reasoning text (streamed in chunks)
-  | 'tool_start'         // Tool call initiated (with tool name & params)
+  // New delta-based events (minecraftlm pattern)
+  | 'turn_start'         // New agent turn starting
+  | 'thinking_delta'     // Incremental thinking text (append to existing)
+  | 'tool_call'          // Tool being called (with id, name, args)
   | 'tool_result'        // Tool execution completed
-  | 'code_streaming'     // Partial code being generated (real-time updates)
-  | 'code_complete'      // Full code generation finished for a component
-  | 'success'            // Final success
+  | 'code_delta'         // Incremental code generation
+  | 'canvas_update'      // Component placed on canvas
+  | 'todo_update'        // Agent-managed TODO list update
+  | 'complete'           // Task finished (success or error)
   | 'error'              // Error occurred
+  // Legacy events (kept for backward compatibility)
+  | 'progress'           // Generic status updates
+  | 'thinking'           // Claude's reasoning text (full chunks) - legacy
+  | 'tool_start'         // Tool call initiated - legacy (use tool_call)
+  | 'code_streaming'     // Partial code being generated - legacy
+  | 'code_complete'      // Full code generation finished - legacy
+  | 'success'            // Final success - legacy (use complete)
   // Page generation specific events
   | 'page_plan'          // AI's plan for what components to create
   | 'component_start'    // Starting generation of a specific component
   | 'component_complete' // Component finished (success or failure)
-  | 'canvas_update'      // Component placed on canvas
-  | 'todo_update';       // Agent-managed TODO list update
+  // Session events
+  | 'session_start'      // Session started
+  | 'user_message';      // User's message
 
 export type StreamStatus = 'idle' | 'thinking' | 'acting' | 'success' | 'error';
 
@@ -172,8 +182,9 @@ export interface StreamEvent {
     toolUseId?: string;         // For correlating tool_start with tool_result
     iteration?: number;         // Current iteration
     maxIterations?: number;     // Max iterations allowed
-    status?: 'success' | 'error';  // For tool_result
+    status?: 'success' | 'error';  // For tool_result and complete
     result?: unknown;           // Tool result data
+    reason?: string;            // For complete event - why task ended (end_turn, max_iterations, etc.)
     // Code streaming fields
     partialCode?: string;        // For code_streaming - partial code being generated
     code?: string;               // For code_complete - full generated code
