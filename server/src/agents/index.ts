@@ -4,5 +4,5 @@ export { BaseAgent, type Tool, type ToolResult } from './base';
 // Component validator
 export { validateComponent } from './validator';
 
-// Component agent
-export { ComponentAgent, componentAgent } from './component';
+// Design agent
+export { DesignAgent, designAgent } from './design';

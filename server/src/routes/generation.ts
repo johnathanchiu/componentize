@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { componentAgent } from '../agents';
+import { designAgent } from '../agents';
 import { projectService, type StreamEvent } from '../services/projectService';
 import {
   createBuffer,
@@ -98,10 +98,10 @@ export function registerGenerationRoutes(server: FastifyInstance) {
       setImmediate(async () => {
         try {
           // Set project context for file operations
-          componentAgent.setProjectContext(id);
+          designAgent.setProjectContext(id);
 
           // Run agent and buffer all events
-          for await (const event of componentAgent.generate(prompt)) {
+          for await (const event of designAgent.generate(prompt)) {
             appendEvent(id, makeSSE(event));
           }
 
@@ -125,7 +125,7 @@ export function registerGenerationRoutes(server: FastifyInstance) {
           const allEvents = getBufferEvents(id);
           await projectService.appendHistory(id, allEvents as StreamEvent[]);
         } finally {
-          componentAgent.clearProjectContext();
+          designAgent.clearProjectContext();
         }
       });
 
@@ -151,7 +151,7 @@ export function registerGenerationRoutes(server: FastifyInstance) {
       }
 
       // Set project context
-      componentAgent.setProjectContext(id);
+      designAgent.setProjectContext(id);
 
       // SSE headers
       reply.raw.writeHead(200, {
@@ -184,7 +184,7 @@ export function registerGenerationRoutes(server: FastifyInstance) {
       sessionEvents.push(userMessageEvent);
 
       try {
-        for await (const event of componentAgent.generate(prompt)) {
+        for await (const event of designAgent.generate(prompt)) {
           // Store event for history
           sessionEvents.push(event as StreamEvent);
           reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -198,7 +198,7 @@ export function registerGenerationRoutes(server: FastifyInstance) {
         sessionEvents.push(errorEvent);
         reply.raw.write(`data: ${JSON.stringify(errorEvent)}\n\n`);
       } finally {
-        componentAgent.clearProjectContext();
+        designAgent.clearProjectContext();
         // Persist all events to history
         await projectService.appendHistory(id, sessionEvents);
       }
