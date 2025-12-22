@@ -109,7 +109,8 @@ export interface ExportFile {
 export type StreamEventType =
   // New delta-based events (minecraftlm pattern)
   | 'turn_start'         // New agent turn starting
-  | 'thinking_delta'     // Incremental thinking text (append to existing)
+  | 'thinking_delta'     // Incremental thinking text (Claude's internal reasoning)
+  | 'text_delta'         // Incremental response text (Claude's response to user)
   | 'tool_call'          // Tool being called (with id, name, args)
   | 'tool_result'        // Tool execution completed
   | 'code_delta'         // Incremental code generation

@@ -40,8 +40,10 @@ function CreateTab() {
     incrementComponentVersion,
     setAgentTodos,
     // Block accumulation actions for delta-based streaming
+    currentBlock,
     startNewBlock,
     appendThinkingDelta,
+    appendTextDelta,
     addToolCall,
     setToolResult,
     completeBlock,
@@ -122,6 +124,9 @@ function CreateTab() {
     // Start assistant message for streaming
     startAssistantMessage();
 
+    // Track tool calls locally for completion (text is now tracked in currentBlock)
+    let hasToolCalls = false;
+
     for await (const event of stream) {
       // Always add to streaming events for timeline rendering (backward compat)
       addStreamingEvent(event);
@@ -133,12 +138,21 @@ function CreateTab() {
           break;
 
         case 'thinking_delta':
+          // Extended thinking: Claude's internal reasoning
           if (event.data?.content) {
             appendThinkingDelta(event.data.content);
           }
           break;
 
+        case 'text_delta':
+          // Extended thinking: Claude's response to user (separate from thinking)
+          if (event.data?.content) {
+            appendTextDelta(event.data.content);
+          }
+          break;
+
         case 'tool_call':
+          hasToolCalls = true;
           if (event.data?.toolUseId && event.data?.toolName) {
             addToolCall(event.data.toolUseId, event.data.toolName, event.data.toolInput || {});
           }
@@ -170,9 +184,15 @@ function CreateTab() {
           }
           break;
 
-        case 'complete':
+        case 'complete': {
+          // Get the current block state before completing
+          const block = useGenerationStore.getState().currentBlock;
+          // With extended thinking: block.text contains the response, block.thinking contains reasoning
+          // The content is always in block.text (or fallback to event.data.content)
+          const content = block?.text || (event.data?.content as string) || '';
           completeBlock();
-          completeAssistantMessage();
+          // Always pass the content, thinking is preserved in the assistant message
+          completeAssistantMessage(content);
           // Clear todos on successful completion
           setAgentTodos([]);
           // Clear form after delay
@@ -188,6 +208,7 @@ function CreateTab() {
             }, 2000);
           }, 1000);
           break;
+        }
 
         case 'error':
           completeBlock();

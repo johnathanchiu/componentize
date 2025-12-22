@@ -133,7 +133,7 @@ When writing React components:
       };
 
       try {
-        // Create streaming request with system prompt
+        // Create streaming request with system prompt and extended thinking
         // Always use 'auto' tool_choice - let Claude decide when to use tools
         const stream = this.client.messages.stream({
           model: appConfig.api.modelName,
@@ -142,6 +142,11 @@ When writing React components:
           tools: this.tools,
           tool_choice: { type: 'auto' },
           messages,
+          // Enable extended thinking for separate thinking/text streams
+          thinking: {
+            type: 'enabled',
+            budget_tokens: 10000,  // Medium budget for thinking
+          },
         });
 
         // Track state during streaming
@@ -151,17 +156,27 @@ When writing React components:
         let lastCodeStreamTime = 0;
         const CODE_STREAM_INTERVAL = 100; // Emit code chunks every 100ms
 
+        // Track current block type for extended thinking
+        let currentBlockType: 'thinking' | 'text' | 'tool_use' | null = null;
+
         // Process streaming events
         for await (const event of stream) {
           const timestamp = Date.now();
 
           switch (event.type) {
             case 'content_block_start':
-              if (event.content_block.type === 'text') {
-                // Text block starting - Claude is about to reason
+              // Handle extended thinking block types
+              if (event.content_block.type === 'thinking') {
+                // Thinking block starting - Claude's internal reasoning
+                currentBlockType = 'thinking';
+                accumulatedText = '';
+              } else if (event.content_block.type === 'text') {
+                // Text block starting - Claude's response to user
+                currentBlockType = 'text';
                 accumulatedText = '';
               } else if (event.content_block.type === 'tool_use') {
                 // Tool use block starting - emit tool_call event
+                currentBlockType = 'tool_use';
                 currentToolUse = {
                   id: event.content_block.id,
                   name: event.content_block.name,
@@ -180,14 +195,23 @@ When writing React components:
               break;
 
             case 'content_block_delta':
-              if (event.delta.type === 'text_delta') {
-                // Claude is streaming text - emit each delta immediately for smooth UX
-                const delta = event.delta.text;
+              // Handle extended thinking deltas
+              if (event.delta.type === 'thinking_delta') {
+                // Claude's internal thinking - emit as thinking_delta
+                const delta = (event.delta as { thinking: string }).thinking;
                 accumulatedText += delta;
-
-                // Emit thinking_delta for each token (frontend accumulates)
                 yield {
                   type: 'thinking_delta',
+                  message: delta,
+                  timestamp,
+                  data: { content: delta }
+                };
+              } else if (event.delta.type === 'text_delta') {
+                // Claude's response text - emit as text_delta (separate from thinking)
+                const delta = event.delta.text;
+                accumulatedText += delta;
+                yield {
+                  type: 'text_delta',
                   message: delta,
                   timestamp,
                   data: { content: delta }
@@ -227,9 +251,9 @@ When writing React components:
               break;
 
             case 'content_block_stop':
-              // Note: We no longer emit accumulated thinking here since we emit deltas above
-              // Just reset the accumulator
+              // Reset accumulators and block type
               accumulatedText = '';
+              currentBlockType = null;
 
               // If we finished a tool use block, parse and EXECUTE immediately
               // This enables incremental canvas updates during streaming

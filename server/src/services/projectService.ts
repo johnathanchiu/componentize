@@ -285,10 +285,17 @@ class ProjectService {
         case 'success':
           // Finalize assistant message
           if (currentAssistant) {
-            // Only set content if there's explicit text content (not tool result messages)
-            // event.data?.content would be model text output, event.message is typically tool result
-            currentAssistant.content = (event.data?.content as string) || '';
-            currentAssistant.thinking = accumulatedThinking || undefined;
+            const hasToolCalls = toolCalls.size > 0;
+            // If there were no tool calls, the accumulated "thinking" is actually the content
+            // (Claude's text response). Only treat it as thinking if tools were used.
+            if (hasToolCalls) {
+              currentAssistant.content = (event.data?.content as string) || '';
+              currentAssistant.thinking = accumulatedThinking || undefined;
+            } else {
+              // No tools - the "thinking" deltas are actually the response content
+              currentAssistant.content = accumulatedThinking || (event.data?.content as string) || '';
+              currentAssistant.thinking = undefined;
+            }
             currentAssistant.toolCalls = Array.from(toolCalls.values());
             messages.push(currentAssistant);
             currentAssistant = null;

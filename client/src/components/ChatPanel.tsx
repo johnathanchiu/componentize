@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { ChevronDown, Check, X, Loader2, Wrench, Pencil } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { useGenerationStore, type ConversationMessage, type ToolCallState } from '../store/generationStore';
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from './ui/collapsible';
 import { cn } from '../lib/utils';
@@ -219,7 +220,9 @@ function AssistantMessage({ message }: { message: ConversationMessage }) {
         ))}
 
         {hasContent && (
-          <div className="text-sm text-neutral-700 pt-1">{content}</div>
+          <div className="text-sm text-neutral-700 pt-1 prose prose-sm prose-neutral max-w-none">
+            <ReactMarkdown>{content}</ReactMarkdown>
+          </div>
         )}
 
         {showThinkingIndicator && <ThinkingIndicator />}
@@ -255,6 +258,8 @@ export function ChatPanel() {
       return {
         ...msg,
         thinking: currentBlock.thinking || msg.thinking,
+        // During streaming, show text from currentBlock as content
+        content: currentBlock.text || msg.content,
         toolCalls: currentBlock.toolCalls.length > 0 ? currentBlock.toolCalls : msg.toolCalls,
       };
     }

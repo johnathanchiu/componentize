@@ -34,7 +34,8 @@ export interface ToolCallState {
 
 // Assistant block - accumulated from delta events
 export interface AssistantBlock {
-  thinking: string;           // Accumulated thinking_delta text
+  thinking: string;           // Accumulated thinking_delta text (Claude's internal reasoning)
+  text: string;               // Accumulated text_delta text (Claude's response to user)
   toolCalls: ToolCallState[]; // Tool calls in this turn
 }
 
@@ -75,6 +76,7 @@ interface GenerationStore {
   currentBlock: AssistantBlock | null;
   startNewBlock: () => void;
   appendThinkingDelta: (delta: string) => void;
+  appendTextDelta: (delta: string) => void;  // For extended thinking text responses
   addToolCall: (id: string, name: string, args: unknown) => void;
   setToolResult: (toolCallId: string, status: 'success' | 'error', result: unknown) => void;
   completeBlock: () => void;
@@ -261,14 +263,20 @@ export const useGenerationStore = create<GenerationStore>()(
 
       // Block accumulation actions (for delta-based streaming)
       startNewBlock: () => set({
-        currentBlock: { thinking: '', toolCalls: [] },
+        currentBlock: { thinking: '', text: '', toolCalls: [] },
         streamStatus: 'thinking',
       }),
 
       appendThinkingDelta: (delta) => set((state) => ({
         currentBlock: state.currentBlock
           ? { ...state.currentBlock, thinking: state.currentBlock.thinking + delta }
-          : { thinking: delta, toolCalls: [] }
+          : { thinking: delta, text: '', toolCalls: [] }
+      })),
+
+      appendTextDelta: (delta) => set((state) => ({
+        currentBlock: state.currentBlock
+          ? { ...state.currentBlock, text: state.currentBlock.text + delta }
+          : { thinking: '', text: delta, toolCalls: [] }
       })),
 
       addToolCall: (id, name, args) => set((state) => ({
@@ -277,7 +285,7 @@ export const useGenerationStore = create<GenerationStore>()(
               ...state.currentBlock,
               toolCalls: [...state.currentBlock.toolCalls, { id, name, args, status: 'pending' as const }]
             }
-          : { thinking: '', toolCalls: [{ id, name, args, status: 'pending' as const }] },
+          : { thinking: '', text: '', toolCalls: [{ id, name, args, status: 'pending' as const }] },
         streamStatus: 'acting',
       })),
 
@@ -347,6 +355,7 @@ export const useGenerationStore = create<GenerationStore>()(
           messages[messages.length - 1] = {
             ...lastMessage,
             content: content || lastMessage.content,
+            // With extended thinking, thinking is always preserved
             isStreaming: false,
           };
         }
