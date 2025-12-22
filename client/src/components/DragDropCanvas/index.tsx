@@ -69,6 +69,39 @@ function DragDropCanvasInner() {
   }, [selectedComponentId, removeFromCanvas, setSelectedComponentId]);
 
   // ============================================
+  // KEYBOARD: Cmd/Ctrl to enable drag mode
+  // ============================================
+
+  const [isDragModeActive, setIsDragModeActive] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey) {
+        setIsDragModeActive(true);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!e.metaKey && !e.ctrlKey) {
+        setIsDragModeActive(false);
+      }
+    };
+
+    // Handle window blur (user switches apps while holding key)
+    const handleBlur = () => setIsDragModeActive(false);
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
+
+  // ============================================
   // NODES: Zustand → Derived → React Flow State
   // ============================================
 
@@ -319,7 +352,7 @@ function DragDropCanvasInner() {
           onPaneClick={handlePaneClick}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
-          nodesDraggable={true}
+          nodesDraggable={isDragModeActive}
           multiSelectionKeyCode={null}
           selectionOnDrag={false}
           fitView={false}
@@ -340,6 +373,13 @@ function DragDropCanvasInner() {
           />
           <Controls showInteractive={false} />
         </ReactFlow>
+      )}
+
+      {/* Drag mode indicator */}
+      {isDragModeActive && hasContent && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-blue-500 text-white px-3 py-1.5 rounded-full text-xs font-medium z-50 shadow-sm">
+          Drag mode (release Cmd to interact)
+        </div>
       )}
 
       {/* Top-right controls */}
