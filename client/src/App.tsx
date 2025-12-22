@@ -9,12 +9,14 @@ import { PageGenerationOverlay } from './components/page-generation';
 import { useCanvasStore } from './store/canvasStore';
 import { useProjectStore, type Project } from './store/projectStore';
 import { useGenerationStore } from './store/generationStore';
+import { useStreamHandler } from './hooks/useStreamHandler';
 import { getProject } from './lib/api';
 
 function App() {
   const { clearCanvas, setCanvasDirectly, selectedComponentId, removeFromCanvas } = useCanvasStore();
   const { currentProject, setCurrentProject, setAvailableComponents } = useProjectStore();
   const { setCurrentProjectId, clearStreamingEvents, loadConversationFromHistory, clearConversation } = useGenerationStore();
+  const { resumeStream } = useStreamHandler();
   const [isLoading, setIsLoading] = useState(true);
 
   // Helper to load project with all data
@@ -31,6 +33,15 @@ function App() {
       if (result.history && result.history.length > 0) {
         loadConversationFromHistory(result.history);
       }
+
+      // If task is still running, resume the stream
+      if (result.taskStatus === 'running') {
+        // Small delay to ensure UI is ready
+        setTimeout(() => {
+          resumeStream(projectId);
+        }, 100);
+      }
+
       return result;
     } catch (error) {
       console.error('Failed to load project:', error);

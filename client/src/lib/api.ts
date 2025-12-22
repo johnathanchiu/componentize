@@ -241,6 +241,8 @@ export interface ProjectResponse {
   components: { name: string; filepath: string }[];
   canvas: CanvasComponentData[];
   history: ServerConversationMessage[];
+  taskStatus: 'idle' | 'running' | 'complete' | 'error';
+  eventCount: number;
 }
 
 export async function getProject(id: string): Promise<ProjectResponse> {

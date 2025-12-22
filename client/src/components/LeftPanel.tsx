@@ -40,7 +40,6 @@ function CreateTab() {
     incrementComponentVersion,
     setAgentTodos,
     // Block accumulation actions for delta-based streaming
-    currentBlock,
     startNewBlock,
     appendThinkingDelta,
     appendTextDelta,
@@ -125,9 +124,6 @@ function CreateTab() {
     // Start assistant message for streaming
     startAssistantMessage();
 
-    // Track tool calls locally for completion (text is now tracked in currentBlock)
-    let hasToolCalls = false;
-
     for await (const event of stream) {
       // Always add to streaming events for timeline rendering (backward compat)
       addStreamingEvent(event);
@@ -156,7 +152,6 @@ function CreateTab() {
           break;
 
         case 'tool_call':
-          hasToolCalls = true;
           if (event.data?.toolUseId && event.data?.toolName) {
             addToolCall(event.data.toolUseId, event.data.toolName, event.data.toolInput || {});
           }
@@ -541,12 +536,19 @@ function DraggableComponentCard({ name, projectId, onDelete, onError, onSuccess 
       });
   }, [projectId, name, componentVersion]);
 
-  // Report render errors to parent
+  // Report render errors to parent - only once per error
+  const reportedErrorRef = useRef<string | null>(null);
+  const reportedSuccessRef = useRef(false);
+
   useEffect(() => {
-    if (renderError) {
+    if (renderError && renderError !== reportedErrorRef.current) {
+      reportedErrorRef.current = renderError;
+      reportedSuccessRef.current = false;
       onError?.(name, renderError);
-    } else if (!loading && Component && !renderError) {
-      // Component loaded and rendered successfully
+    } else if (!loading && Component && !renderError && !reportedSuccessRef.current) {
+      // Component loaded and rendered successfully - only report once
+      reportedSuccessRef.current = true;
+      reportedErrorRef.current = null;
       onSuccess?.(name);
     }
   }, [renderError, loading, Component, name, onError, onSuccess]);

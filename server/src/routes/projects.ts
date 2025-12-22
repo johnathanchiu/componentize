@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { projectService } from '../services/projectService';
 import { fileService } from '../services/fileService';
+import { getBufferStatus } from '../services/eventBuffer';
 
 export function registerProjectRoutes(server: FastifyInstance) {
   // List all projects
@@ -42,11 +43,16 @@ export function registerProjectRoutes(server: FastifyInstance) {
       projectService.getHistory(id),
     ]);
 
+    // Get task status for stream resumption on page refresh
+    const { status: taskStatus, eventCount } = getBufferStatus(id);
+
     return {
       project,
       components: componentsResult.components || [],
       canvas: canvas || [],
       history: history || [],
+      taskStatus,
+      eventCount,
     };
   });
 
