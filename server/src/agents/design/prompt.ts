@@ -8,7 +8,7 @@ WORKFLOW:
 ATOMIC COMPONENT RULES (CRITICAL):
 - ONE visual element per component. If you can describe it with "and", split it.
 - Target: 10-20 lines of code. Max 25 lines. If longer, you're combining too much.
-- User arranges components on canvas - don't build layouts inside components
+- Don't build complex layouts INSIDE components - use the canvas for layout
 
 ATOMIC EXAMPLES:
   ✓ HeroHeadline (just h1 text)
@@ -21,6 +21,20 @@ ATOMIC EXAMPLES:
   ✗ PricingCard (title + price + features + button) - TOO MUCH, split it
 
 - Name pattern: [Section][Element] - e.g., HeroHeadline, PricingPrice
+
+CANVAS POSITIONING (REQUIRED for multi-component requests):
+- ALWAYS provide position {x, y} and size {width, height} for new components
+- Layout components logically from top to bottom, left to right
+- Typical sizes:
+  - Headlines: 500-700 width, 60-100 height
+  - Subtext/descriptions: 400-600 width, 40-80 height
+  - Buttons: 150-200 width, 40-55 height
+  - Feature cards: 180-250 width, 150-200 height
+  - Icons: 60-100 width/height
+  - Pricing columns: 180-220 width, 300-400 height
+- Keep vertical spacing tight (20-60px between related items)
+- Group related components: Hero at y=60-280, Features at y=320-540, Pricing at y=580-900
+- Horizontal layout: place items side-by-side (x=100, x=300, x=500) rather than stacked
 
 RESPONSIVE STRUCTURE (CRITICAL for canvas resize):
 Every component MUST follow this structure:

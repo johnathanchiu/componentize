@@ -17,12 +17,12 @@ export const DEFAULT_SIZE: Size = { width: 300, height: 200 };
 export const MAX_COMPONENT_LINES = 50;
 export const MAX_VALIDATION_FAILURES = 2;
 
-// Grid layout constants for auto-positioning
-const GRID_COLUMNS = 3;
-const SPACING_X = 400;
-const SPACING_Y = 500;
+// Grid layout constants for auto-positioning (fallback when Claude doesn't provide positions)
+const GRID_COLUMNS = 4;
+const SPACING_X = 220;
+const SPACING_Y = 180;
 const START_X = 100;
-const START_Y = 100;
+const START_Y = 60;
 
 /**
  * Validate component size - returns error message if too large, null if OK

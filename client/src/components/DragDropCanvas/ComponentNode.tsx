@@ -7,7 +7,7 @@ import { ErrorOverlay } from './ErrorOverlay';
 import type { Size } from '../../types/index';
 
 // Default size for components that don't have an explicit size set
-const DEFAULT_SIZE: Size = { width: 200, height: 120 };
+const DEFAULT_SIZE: Size = { width: 300, height: 200 };
 
 // Resize handle component - extracted for clarity
 interface ResizeHandleProps {

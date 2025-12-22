@@ -51,6 +51,7 @@ function CreateTab() {
     addUserMessage,
     startAssistantMessage,
     completeAssistantMessage,
+    updateCurrentAssistantThinking,
   } = useGenerationStore();
 
   // Reset form when switching modes
@@ -141,6 +142,9 @@ function CreateTab() {
           // Extended thinking: Claude's internal reasoning
           if (event.data?.content) {
             appendThinkingDelta(event.data.content);
+            // Also persist to assistant message so it survives tool calls
+            const currentThinking = useGenerationStore.getState().currentBlock?.thinking || '';
+            updateCurrentAssistantThinking(currentThinking);
           }
           break;
 
