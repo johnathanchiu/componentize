@@ -35,8 +35,14 @@ export function useStreamHandler() {
 
       case 'turn_start':
         genStore.startNewBlock();
+        // Only start new assistant message if resuming AND there isn't one already streaming
         if (isResume) {
-          genStore.startAssistantMessage();
+          const messages = useGenerationStore.getState().conversationMessages;
+          const lastMsg = messages[messages.length - 1];
+          // Only add assistant message if last message isn't an unfinished assistant message
+          if (!lastMsg || lastMsg.type !== 'assistant' || !lastMsg.isStreaming) {
+            genStore.startAssistantMessage();
+          }
         }
         break;
 
@@ -152,7 +158,11 @@ export function useStreamHandler() {
    */
   const resumeStream = useCallback(async (projectId: string) => {
     const { subscribeToStream } = await import('../lib/api');
-    const genStore = generationStoreRef.current();
+    const genStore = useGenerationStore.getState();
+
+    // Clear existing state - we'll rebuild from stream replay (since=0)
+    genStore.clearConversation();
+    genStore.clearStreamingEvents();
 
     genStore.setIsGenerating(true);
     genStore.setStreamPanelExpanded(true);

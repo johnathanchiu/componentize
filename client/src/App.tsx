@@ -29,17 +29,17 @@ function App() {
       setCanvasDirectly(result.canvas || [], projectId);
       // Set available components from consolidated response
       setAvailableComponents(result.components || []);
-      // Load conversation history from server (new accumulated format)
-      if (result.history && result.history.length > 0) {
-        loadConversationFromHistory(result.history);
-      }
-
-      // If task is still running, resume the stream
+      // If task is still running, resume the stream (don't load history - stream will replay it)
       if (result.taskStatus === 'running') {
         // Small delay to ensure UI is ready
         setTimeout(() => {
           resumeStream(projectId);
         }, 100);
+      } else {
+        // Only load history if task is NOT running (to avoid duplicates from stream replay)
+        if (result.history && result.history.length > 0) {
+          loadConversationFromHistory(result.history);
+        }
       }
 
       return result;

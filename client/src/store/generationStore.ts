@@ -279,15 +279,23 @@ export const useGenerationStore = create<GenerationStore>()(
           : { thinking: '', text: delta, toolCalls: [] }
       })),
 
-      addToolCall: (id, name, args) => set((state) => ({
-        currentBlock: state.currentBlock
-          ? {
-              ...state.currentBlock,
-              toolCalls: [...state.currentBlock.toolCalls, { id, name, args, status: 'pending' as const }]
-            }
-          : { thinking: '', text: '', toolCalls: [{ id, name, args, status: 'pending' as const }] },
-        streamStatus: 'acting',
-      })),
+      addToolCall: (id, name, args) => set((state) => {
+        // Deduplicate by tool use ID - prevents duplicates on stream resume
+        const existingIds = new Set(state.currentBlock?.toolCalls.map(tc => tc.id) || []);
+        if (existingIds.has(id)) {
+          return state; // Already have this tool call
+        }
+
+        return {
+          currentBlock: state.currentBlock
+            ? {
+                ...state.currentBlock,
+                toolCalls: [...state.currentBlock.toolCalls, { id, name, args, status: 'pending' as const }]
+              }
+            : { thinking: '', text: '', toolCalls: [{ id, name, args, status: 'pending' as const }] },
+          streamStatus: 'acting',
+        };
+      }),
 
       setToolResult: (toolCallId, status, result) => set((state) => ({
         currentBlock: state.currentBlock
