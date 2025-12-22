@@ -20,6 +20,9 @@ const debouncedSave = (projectId: string, components: CanvasComponent[]) => {
   saveTimeouts.set(projectId, timeoutId);
 };
 
+// Maximum history entries to prevent memory bloat
+const MAX_HISTORY = 50;
+
 interface CanvasStore {
   // Current project ID (for persistence)
   currentProjectId: string | null;
@@ -37,6 +40,13 @@ interface CanvasStore {
   removeFromCanvas: (id: string) => void;
   clearCanvas: () => void;
 
+  // Undo/Redo history (session-only, not persisted)
+  history: CanvasComponent[][];
+  future: CanvasComponent[][];
+  pushToHistory: () => void;
+  undo: () => void;
+  redo: () => void;
+
   // Selection
   selectedComponentId: string | null;
   setSelectedComponentId: (id: string | null) => void;
@@ -51,7 +61,7 @@ interface CanvasStore {
   toggleShowConnections: () => void;
 }
 
-export const useCanvasStore = create<CanvasStore>((set) => ({
+export const useCanvasStore = create<CanvasStore>((set, get) => ({
   // Current project ID
   currentProjectId: null,
   setCurrentProjectId: (id) => set({ currentProjectId: id }),
@@ -61,15 +71,69 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
   isLoadingCanvas: false,
   canvasLoadError: null,
 
+  // Undo/Redo history
+  history: [],
+  future: [],
+
   setCanvasDirectly: (components, projectId) =>
     set({
       canvasComponents: components,
       currentProjectId: projectId,
       isLoadingCanvas: false,
       canvasLoadError: null,
+      // Clear history when loading a new project
+      history: [],
+      future: [],
     }),
 
-  addToCanvas: (component) =>
+  // Push current state to history before mutations
+  pushToHistory: () =>
+    set((state) => ({
+      history: [...state.history.slice(-(MAX_HISTORY - 1)), state.canvasComponents],
+      future: [], // Clear redo stack on new action
+    })),
+
+  undo: () => {
+    const state = get();
+    if (state.history.length === 0) return;
+
+    const previous = state.history[state.history.length - 1];
+    const newHistory = state.history.slice(0, -1);
+
+    // Trigger save for the restored state
+    if (state.currentProjectId) {
+      debouncedSave(state.currentProjectId, previous);
+    }
+
+    set({
+      canvasComponents: previous,
+      history: newHistory,
+      future: [state.canvasComponents, ...state.future],
+    });
+  },
+
+  redo: () => {
+    const state = get();
+    if (state.future.length === 0) return;
+
+    const next = state.future[0];
+    const newFuture = state.future.slice(1);
+
+    // Trigger save for the restored state
+    if (state.currentProjectId) {
+      debouncedSave(state.currentProjectId, next);
+    }
+
+    set({
+      canvasComponents: next,
+      history: [...state.history, state.canvasComponents],
+      future: newFuture,
+    });
+  },
+
+  addToCanvas: (component) => {
+    // Push to history before mutation
+    get().pushToHistory();
     set((state) => {
       console.log('[Canvas] addToCanvas:', component.componentName, 'at', component.position);
       const newComponents = [...state.canvasComponents, component];
@@ -77,8 +141,10 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
         debouncedSave(state.currentProjectId, newComponents);
       }
       return { canvasComponents: newComponents };
-    }),
+    });
+  },
 
+  // Note: updatePosition does NOT push to history - called on drag START instead
   updatePosition: (id, x, y) =>
     set((state) => {
       const comp = state.canvasComponents.find((c) => c.id === id);
@@ -92,7 +158,9 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
       return { canvasComponents: newComponents };
     }),
 
-  updateSize: (id, width, height, x, y) =>
+  updateSize: (id, width, height, x, y) => {
+    // Push to history before mutation
+    get().pushToHistory();
     set((state) => {
       const comp = state.canvasComponents.find((c) => c.id === id);
       console.log('[Canvas] updateSize:', comp?.componentName, 'to', { width, height }, x !== undefined ? `pos: ${x}, ${y}` : '');
@@ -110,9 +178,12 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
         debouncedSave(state.currentProjectId, newComponents);
       }
       return { canvasComponents: newComponents };
-    }),
+    });
+  },
 
-  clearSize: (id) =>
+  clearSize: (id) => {
+    // Push to history before mutation
+    get().pushToHistory();
     set((state) => {
       const newComponents = state.canvasComponents.map((comp) => {
         if (comp.id === id) {
@@ -125,9 +196,12 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
         debouncedSave(state.currentProjectId, newComponents);
       }
       return { canvasComponents: newComponents };
-    }),
+    });
+  },
 
-  removeFromCanvas: (id) =>
+  removeFromCanvas: (id) => {
+    // Push to history before mutation
+    get().pushToHistory();
     set((state) => {
       const comp = state.canvasComponents.find((c) => c.id === id);
       console.log('[Canvas] removeFromCanvas:', comp?.componentName);
@@ -141,9 +215,10 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
         canvasComponents: newComponents,
         stateConnections: newConnections,
       };
-    }),
+    });
+  },
 
-  clearCanvas: () => set({ canvasComponents: [] }),
+  clearCanvas: () => set({ canvasComponents: [], history: [], future: [] }),
 
   // Selection
   selectedComponentId: null,

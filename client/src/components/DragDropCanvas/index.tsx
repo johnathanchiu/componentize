@@ -42,6 +42,9 @@ function DragDropCanvasInner() {
     stateConnections,
     showConnections,
     toggleShowConnections,
+    undo,
+    redo,
+    pushToHistory,
   } = useCanvasStore();
   const { setGenerationMode, setEditingComponentName, startFixing } = useGenerationStore();
 
@@ -100,6 +103,34 @@ function DragDropCanvasInner() {
       window.removeEventListener('blur', handleBlur);
     };
   }, []);
+
+  // ============================================
+  // KEYBOARD: Undo/Redo shortcuts
+  // ============================================
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if typing in input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Undo: Cmd+Z (Mac) or Ctrl+Z (Windows)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+
+      // Redo: Cmd+Shift+Z (Mac) or Ctrl+Shift+Z (Windows)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
 
   // ============================================
   // NODES: Zustand → Derived → React Flow State
@@ -232,6 +263,11 @@ function DragDropCanvasInner() {
     [setSelectedComponentId, selectedComponentId]
   );
 
+  const handleNodeDragStart = useCallback(() => {
+    // Push to history before drag begins (one entry per drag operation)
+    pushToHistory();
+  }, [pushToHistory]);
+
   const handleNodeDragStop = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       updatePosition(node.id, node.position.x, node.position.y);
@@ -348,6 +384,7 @@ function DragDropCanvasInner() {
           edges={edges}
           nodeTypes={nodeTypes}
           onNodesChange={handleNodesChange}
+          onNodeDragStart={handleNodeDragStart}
           onNodeDragStop={handleNodeDragStop}
           onPaneClick={handlePaneClick}
           onDragOver={handleDragOver}
