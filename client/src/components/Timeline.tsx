@@ -1,7 +1,7 @@
 import { useEffect, useRef, useMemo } from 'react';
 import { Brain } from 'lucide-react';
 import { TimelineEvent } from './TimelineEvent';
-import { useGenerationStore, type AssistantBlock } from '../store/generationStore';
+import { useGenerationStore, type AssistantBlock } from '../features/generation/generationStore';
 import type { StreamEvent } from '../types';
 
 interface TimelineProps {

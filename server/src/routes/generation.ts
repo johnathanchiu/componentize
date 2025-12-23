@@ -9,21 +9,11 @@ import {
   markComplete,
   subscribe,
   makeSSE,
-  getBufferStatus,
   isTaskRunning,
   getBufferEvents,
 } from '../services/eventBuffer';
 
 export function registerGenerationRoutes(server: FastifyInstance) {
-  // Check task status for a project
-  server.get<{ Params: { id: string } }>(
-    '/api/projects/:id/status',
-    async (request) => {
-      const { id } = request.params;
-      return getBufferStatus(id);
-    }
-  );
-
   // SSE stream endpoint with replay support
   // Use ?since=N to resume from event N (for page refresh reconnection)
   server.get<{ Params: { id: string }; Querystring: { since?: string } }>(
@@ -75,21 +65,22 @@ export function registerGenerationRoutes(server: FastifyInstance) {
       const buffer = createBuffer(id);
 
       // Add initial events to buffer
+      // Persist user message to disk immediately (complete event, not buffered)
+      const timestamp = Date.now();
+      await projectService.appendHistoryMessage(id, {
+        role: 'user',
+        content: prompt,
+        timestamp,
+      });
+
+      // Add session_start to buffer (for stream subscribers)
       const sessionStartEvent: StreamEvent = {
         type: 'session_start',
         message: 'Generating components',
-        timestamp: Date.now(),
+        timestamp,
         data: { mode: 'create' },
       };
       appendEvent(id, makeSSE(sessionStartEvent));
-
-      const userMessageEvent: StreamEvent = {
-        type: 'user_message',
-        message: prompt,
-        timestamp: Date.now(),
-        data: { prompt },
-      };
-      appendEvent(id, makeSSE(userMessageEvent));
 
       // Mark buffer as started
       markStarted(id);
@@ -108,9 +99,11 @@ export function registerGenerationRoutes(server: FastifyInstance) {
           // Mark complete
           markComplete(id);
 
-          // Persist all events to history
-          const allEvents = getBufferEvents(id);
-          await projectService.appendHistory(id, allEvents as StreamEvent[]);
+          // Persist assistant turn to history (user message already saved)
+          const allEvents = getBufferEvents(id) as StreamEvent[];
+          // Filter out user_message since it's already on disk
+          const assistantEvents = allEvents.filter(e => e.type !== 'user_message');
+          await projectService.appendHistory(id, assistantEvents);
 
         } catch (error) {
           const errorEvent: StreamEvent = {
@@ -121,9 +114,10 @@ export function registerGenerationRoutes(server: FastifyInstance) {
           appendEvent(id, makeSSE(errorEvent));
           markComplete(id, errorEvent.message);
 
-          // Still persist even on error
-          const allEvents = getBufferEvents(id);
-          await projectService.appendHistory(id, allEvents as StreamEvent[]);
+          // Persist assistant turn even on error (user message already saved)
+          const allEvents = getBufferEvents(id) as StreamEvent[];
+          const assistantEvents = allEvents.filter(e => e.type !== 'user_message');
+          await projectService.appendHistory(id, assistantEvents);
         } finally {
           designAgent.clearProjectContext();
         }

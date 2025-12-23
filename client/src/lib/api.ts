@@ -1,6 +1,6 @@
 import type { PageLayout, StreamEvent } from '../types/index';
 import type { Project } from '../store/projectStore';
-import type { ServerConversationMessage } from '../store/generationStore';
+import type { ServerConversationMessage } from '../features/generation/generationStore';
 import { config } from '../config';
 
 const API_BASE_URL = `${config.apiBaseUrl}/api`;

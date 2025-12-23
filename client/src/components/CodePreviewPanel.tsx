@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Code2, RefreshCw, X } from 'lucide-react';
 import { getProjectComponentCode } from '../lib/api';
-import { useGenerationStore } from '../store/generationStore';
-import { useProjectStore } from '../store/projectStore';
+import { useGenerationMode, useEditingComponentName, useStreamStatus } from '../features/generation/generationStore';
+import { useCurrentProject } from '../store/projectStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ResizeHandle } from './ResizeHandle';
 
 export function CodePreviewPanel() {
-  const { generationMode, editingComponentName, streamStatus } = useGenerationStore();
-  const { currentProject } = useProjectStore();
+  // Use typed selector hooks for optimal re-rendering
+  const generationMode = useGenerationMode();
+  const editingComponentName = useEditingComponentName();
+  const streamStatus = useStreamStatus();
+  const currentProject = useCurrentProject();
   const [code, setCode] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');

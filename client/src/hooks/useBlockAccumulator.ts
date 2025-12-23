@@ -1,8 +1,7 @@
 import { useCallback, useRef } from 'react';
-import { useConversationStore } from '../store/conversationStore';
-import { useUIStore } from '../store/uiStore';
+import { useGenerationStore } from '../features/generation/generationStore';
 import { useProjectStore } from '../store/projectStore';
-import { useCanvasStore } from '../store/canvasStore';
+import { useCanvasStore } from '../features/canvas/canvasStore';
 import type { StreamEvent } from '../types/index';
 
 /**
@@ -18,8 +17,7 @@ import type { StreamEvent } from '../types/index';
  */
 export function useBlockAccumulator() {
   // Use refs to get latest store actions without causing re-renders
-  const conversationStoreRef = useRef(useConversationStore.getState);
-  const uiStoreRef = useRef(useUIStore.getState);
+  const generationStoreRef = useRef(useGenerationStore.getState);
   const projectStoreRef = useRef(useProjectStore.getState);
   const canvasStoreRef = useRef(useCanvasStore.getState);
 
@@ -27,8 +25,7 @@ export function useBlockAccumulator() {
    * Process a single stream event
    */
   const processEvent = useCallback((event: StreamEvent, isResume: boolean = false) => {
-    const convStore = conversationStoreRef.current();
-    const uiStore = uiStoreRef.current();
+    const genStore = generationStoreRef.current();
     const projStore = projectStoreRef.current();
     const canvasStore = canvasStoreRef.current();
 
@@ -36,51 +33,51 @@ export function useBlockAccumulator() {
       case 'user_message':
         // On resume, rebuild user message from buffer
         if (isResume && event.data?.content) {
-          convStore.addUserMessage(event.data.content as string);
+          genStore.addUserMessage(event.data.content as string);
         }
         break;
 
       case 'turn_start':
-        convStore.startNewBlock();
-        uiStore.setStreamStatus('thinking');
+        genStore.startNewBlock();
+        genStore.setStreamStatus('thinking');
         // On resume, start new assistant message if needed
         if (isResume) {
-          const messages = useConversationStore.getState().conversationMessages;
+          const messages = useGenerationStore.getState().conversationMessages;
           const lastMsg = messages[messages.length - 1];
           if (!lastMsg || lastMsg.type !== 'assistant' || !lastMsg.isStreaming) {
-            convStore.startAssistantMessage();
+            genStore.startAssistantMessage();
           }
         }
         break;
 
       case 'thinking_delta':
         if (event.data?.content) {
-          convStore.appendThinkingDelta(event.data.content as string);
-          const currentThinking = useConversationStore.getState().currentBlock?.thinking || '';
-          convStore.updateCurrentAssistantThinking(currentThinking);
+          genStore.appendThinkingDelta(event.data.content as string);
+          const currentThinking = useGenerationStore.getState().currentBlock?.thinking || '';
+          genStore.updateCurrentAssistantThinking(currentThinking);
         }
         break;
 
       case 'text_delta':
         if (event.data?.content) {
-          convStore.appendTextDelta(event.data.content as string);
+          genStore.appendTextDelta(event.data.content as string);
         }
         break;
 
       case 'tool_call':
         if (event.data?.toolUseId && event.data?.toolName) {
-          convStore.addToolCall(
+          genStore.addToolCall(
             event.data.toolUseId,
             event.data.toolName,
             event.data.toolInput || {}
           );
-          uiStore.setStreamStatus('acting');
+          genStore.setStreamStatus('acting');
         }
         break;
 
       case 'tool_result':
         if (event.data?.toolUseId) {
-          convStore.setToolResult(
+          genStore.setToolResult(
             event.data.toolUseId,
             event.data.status || 'success',
             event.data.result
@@ -90,14 +87,14 @@ export function useBlockAccumulator() {
           if (event.data.canvasComponent) {
             const comp = event.data.canvasComponent;
             projStore.addAvailableComponent({ name: comp.componentName, filepath: '' });
-            canvasStore.addToCanvas(comp);
-            uiStore.incrementComponentVersion(comp.componentName);
-            uiStore.setCurrentComponentName(comp.componentName);
+            canvasStore.add(comp);
+            genStore.incrementComponentVersion(comp.componentName);
+            genStore.setCurrentComponentName(comp.componentName);
           }
 
           // Handle embedded todo update
           if (event.data.todos) {
-            convStore.setAgentTodos(event.data.todos);
+            genStore.setAgentTodos(event.data.todos);
           }
         }
         break;
@@ -107,49 +104,49 @@ export function useBlockAccumulator() {
         if (event.data?.canvasComponent) {
           const comp = event.data.canvasComponent;
           projStore.addAvailableComponent({ name: comp.componentName, filepath: '' });
-          canvasStore.addToCanvas(comp);
-          uiStore.incrementComponentVersion(comp.componentName);
-          uiStore.setCurrentComponentName(comp.componentName);
+          canvasStore.add(comp);
+          genStore.incrementComponentVersion(comp.componentName);
+          genStore.setCurrentComponentName(comp.componentName);
         }
         break;
 
       // Handle legacy todo_update for backward compatibility
       case 'todo_update':
         if (event.data?.todos) {
-          convStore.setAgentTodos(event.data.todos);
+          genStore.setAgentTodos(event.data.todos);
         }
         break;
 
       case 'complete': {
-        const block = useConversationStore.getState().currentBlock;
+        const block = useGenerationStore.getState().currentBlock;
         const content = block?.text || (event.data?.content as string) || '';
-        convStore.completeBlock();
-        convStore.completeAssistantMessage(content);
-        uiStore.setStreamStatus(event.data?.status === 'error' ? 'error' : 'success');
+        genStore.completeBlock();
+        genStore.completeAssistantMessage(content);
+        genStore.setStreamStatus(event.data?.status === 'error' ? 'error' : 'success');
         // Note: NOT clearing todos here - they persist until agent clears them
         // Cleanup UI after delay
         setTimeout(() => {
-          uiStore.setStreamPanelExpanded(false);
-          uiStore.setGenerationMode('create');
-          uiStore.setEditingComponentName(null);
+          genStore.setStreamPanelExpanded(false);
+          genStore.setGenerationMode('create');
+          genStore.setEditingComponentName(null);
         }, 3000);
         break;
       }
 
       case 'error':
-        convStore.completeBlock();
-        convStore.completeAssistantMessage();
-        uiStore.setStreamStatus('error');
+        genStore.completeBlock();
+        genStore.completeAssistantMessage();
+        genStore.setStreamStatus('error');
         break;
 
       // Legacy success event
       case 'success':
-        convStore.completeAssistantMessage();
-        uiStore.setStreamStatus('success');
+        genStore.completeAssistantMessage();
+        genStore.setStreamStatus('success');
         setTimeout(() => {
-          uiStore.setStreamPanelExpanded(false);
-          uiStore.setGenerationMode('create');
-          uiStore.setEditingComponentName(null);
+          genStore.setStreamPanelExpanded(false);
+          genStore.setGenerationMode('create');
+          genStore.setEditingComponentName(null);
         }, 3000);
         break;
     }
@@ -166,12 +163,12 @@ export function useBlockAccumulator() {
     }
   ) => {
     const { userPrompt, isResume = false } = options || {};
-    const convStore = conversationStoreRef.current();
+    const genStore = generationStoreRef.current();
 
     // For fresh generation (not resume), add user message and start assistant
     if (!isResume && userPrompt) {
-      convStore.addUserMessage(userPrompt);
-      convStore.startAssistantMessage();
+      genStore.addUserMessage(userPrompt);
+      genStore.startAssistantMessage();
     }
 
     for await (const event of stream) {
@@ -181,29 +178,33 @@ export function useBlockAccumulator() {
 
   /**
    * Resume an in-progress stream after page refresh
+   *
+   * NOTE: Disk history is already loaded before this is called.
+   * Buffer contains ONLY the current in-progress turn (mutually exclusive with disk).
+   * We append buffer events on top of disk history.
    */
   const resumeStream = useCallback(async (projectId: string) => {
     const { subscribeToStream } = await import('../lib/api');
-    const convStore = useConversationStore.getState();
-    const uiStore = useUIStore.getState();
+    const genStore = useGenerationStore.getState();
 
-    // Clear existing state - we'll rebuild from stream replay (since=0)
-    convStore.clearConversation();
+    // DON'T clear conversation - disk history is already loaded
+    // Just start streaming to append in-progress events
 
-    uiStore.setIsGenerating(true);
-    uiStore.setStreamPanelExpanded(true);
-    uiStore.setStreamStatus('thinking');
-    uiStore.setCurrentComponentName('components');
+    genStore.setIsGenerating(true);
+    genStore.setStreamPanelExpanded(true);
+    genStore.setStreamStatus('thinking');
+    genStore.setCurrentComponentName('components');
 
     try {
       // Subscribe from event 0 to replay all buffered events
       const stream = subscribeToStream(projectId, 0);
       await handleStream(stream, { isResume: true });
     } catch (err) {
-      console.error('Failed to resume stream:', err);
-      uiStore.setStreamStatus('error');
+      // Buffer gone (404) or other error - that's fine, disk history is already loaded
+      console.log('Buffer expired or error, using disk history:', err);
+      genStore.setStreamStatus('idle');
     } finally {
-      uiStore.setIsGenerating(false);
+      genStore.setIsGenerating(false);
     }
   }, [handleStream]);
 

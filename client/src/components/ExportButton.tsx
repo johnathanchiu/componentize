@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Download, Check } from 'lucide-react';
 import { exportPageAsZip } from '../lib/api';
-import { useCanvasStore } from '../store/canvasStore';
-import { useProjectStore } from '../store/projectStore';
+import { useCanvasComponents } from '../features/canvas/canvasStore';
+import { useCurrentProject } from '../store/projectStore';
 
 export function ExportButton() {
-  const { canvasComponents } = useCanvasStore();
-  const { currentProject } = useProjectStore();
+  // Use typed selector hooks for optimal re-rendering
+  const canvasComponents = useCanvasComponents();
+  const currentProject = useCurrentProject();
   const [isExporting, setIsExporting] = useState(false);
   const [exported, setExported] = useState(false);
   const [error, setError] = useState('');

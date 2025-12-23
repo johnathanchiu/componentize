@@ -1,9 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { ChevronDown, Check, X, Loader2, Wrench, Pencil } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { useGenerationStore, type ConversationMessage, type ToolCallState } from '../features/generation/generationStore';
-import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from './ui/collapsible';
-import { cn } from '../lib/utils';
+import {
+  useConversationMessages,
+  useCurrentBlock,
+  useIsGenerating,
+  type ConversationMessage,
+  type ToolCallState,
+} from './generationStore';
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from '../../components/ui/collapsible';
+import { cn } from '../../lib/utils';
 
 // Helper to get human-readable tool labels
 function getToolLabel(toolName: string, hasResult: boolean, hasError: boolean): string {
@@ -52,7 +58,6 @@ function parseFixPrompt(content: string): { isFixPrompt: boolean; componentName?
 function UserMessage({ content }: { content: string }) {
   const fixInfo = parseFixPrompt(content);
 
-  // Render fix prompts with a cleaner format
   if (fixInfo.isFixPrompt) {
     return (
       <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-sm">
@@ -73,7 +78,7 @@ function UserMessage({ content }: { content: string }) {
   );
 }
 
-// Collapsible thought display (matches minecraftlm ThoughtDisplay)
+// Collapsible thought display
 function ThoughtDisplay({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
   if (!content?.trim()) return null;
 
@@ -86,16 +91,16 @@ function ThoughtDisplay({ content, isStreaming }: { content: string; isStreaming
         />
         <span className="flex items-center gap-1.5 min-w-0">
           {isStreaming && <Loader2 size={10} className="animate-spin" />}
-          <span className={cn(isStreaming && "animate-pulse")}>
-            Thought process
-          </span>
+          <span className={cn(isStreaming && 'animate-pulse')}>Thought process</span>
         </span>
       </CollapsibleTrigger>
       <CollapsiblePanel>
         <div className="pl-4 border-l-2 border-neutral-200 py-2">
           <div className="max-w-none max-h-64 overflow-y-auto text-neutral-600 text-xs whitespace-pre-wrap leading-relaxed">
             {content}
-            {isStreaming && <span className="inline-block w-1 h-3 bg-neutral-400 animate-pulse ml-0.5 align-text-bottom" />}
+            {isStreaming && (
+              <span className="inline-block w-1 h-3 bg-neutral-400 animate-pulse ml-0.5 align-text-bottom" />
+            )}
           </div>
         </div>
       </CollapsiblePanel>
@@ -103,7 +108,7 @@ function ThoughtDisplay({ content, isStreaming }: { content: string; isStreaming
   );
 }
 
-// Tool call display with collapsible result (matches minecraftlm ToolCallWithResultDisplay)
+// Tool call display with collapsible result
 function ToolCallDisplay({ toolCall }: { toolCall: ToolCallState }) {
   const { name, status, result } = toolCall;
   const hasResult = status !== 'pending';
@@ -118,7 +123,6 @@ function ToolCallDisplay({ toolCall }: { toolCall: ToolCallState }) {
       displayContent = result.trim() || null;
     } else if (typeof result === 'object' && result !== null) {
       const resultObj = result as Record<string, unknown>;
-      // Try to extract meaningful content
       if (resultObj.message && typeof resultObj.message === 'string') {
         displayContent = resultObj.message;
       } else if (resultObj.error && typeof resultObj.error === 'string') {
@@ -133,41 +137,34 @@ function ToolCallDisplay({ toolCall }: { toolCall: ToolCallState }) {
   }
 
   const IconComponent = !hasResult
-    ? name === 'edit_component' ? Pencil : Wrench
+    ? name === 'edit_component'
+      ? Pencil
+      : Wrench
     : hasError
       ? X
       : Check;
 
-  const iconColor = !hasResult
-    ? 'text-neutral-400'
-    : hasError
-      ? 'text-red-500'
-      : 'text-green-500';
+  const iconColor = !hasResult ? 'text-neutral-400' : hasError ? 'text-red-500' : 'text-green-500';
 
   const isExpandable = !!displayContent;
   const shouldDefaultOpen = hasError && isExpandable;
 
-  // Non-expandable version
   if (!isExpandable) {
     return (
       <div className="text-sm py-1 flex items-center gap-1.5 text-neutral-600">
-        <IconComponent size={14} className={cn(iconColor, !hasResult && "animate-spin")} />
+        <IconComponent size={14} className={cn(iconColor, !hasResult && 'animate-spin')} />
         <span className="font-medium">{label}</span>
       </div>
     );
   }
 
-  // Expandable version with collapsible
   return (
     <Collapsible className="text-sm" defaultOpen={shouldDefaultOpen}>
       <CollapsibleTrigger className="group w-full text-left py-1 flex items-center gap-1.5 text-neutral-600 hover:text-neutral-800 transition-colors">
         <span className="relative size-3.5">
           <IconComponent
             size={14}
-            className={cn(
-              iconColor,
-              "absolute inset-0 transition-opacity group-hover:opacity-0"
-            )}
+            className={cn(iconColor, 'absolute inset-0 transition-opacity group-hover:opacity-0')}
           />
           <ChevronDown
             size={14}
@@ -179,10 +176,8 @@ function ToolCallDisplay({ toolCall }: { toolCall: ToolCallState }) {
       <CollapsiblePanel>
         <pre
           className={cn(
-            "mt-1.5 p-2 rounded-lg text-xs overflow-auto max-h-48",
-            hasError
-              ? "bg-red-50 text-red-700"
-              : "bg-neutral-50 text-neutral-600"
+            'mt-1.5 p-2 rounded-lg text-xs overflow-auto max-h-48',
+            hasError ? 'bg-red-50 text-red-700' : 'bg-neutral-50 text-neutral-600'
           )}
         >
           {displayContent}
@@ -200,10 +195,8 @@ function AssistantMessage({ message }: { message: ConversationMessage }) {
   const hasToolCalls = toolCalls && toolCalls.length > 0;
   const hasContent = content && content.trim();
 
-  // Show thinking indicator when streaming with no content yet
   const showThinkingIndicator = isStreaming && !hasThought && !hasToolCalls && !hasContent;
 
-  // Don't render completely empty messages
   if (!hasThought && !hasToolCalls && !hasContent && !showThinkingIndicator) {
     return null;
   }
@@ -211,13 +204,10 @@ function AssistantMessage({ message }: { message: ConversationMessage }) {
   return (
     <div className="py-2 border-b border-neutral-100">
       <div className="space-y-1.5">
-        {hasThought && (
-          <ThoughtDisplay content={thinking!} isStreaming={isStreaming} />
-        )}
+        {hasThought && <ThoughtDisplay content={thinking!} isStreaming={isStreaming} />}
 
-        {hasToolCalls && toolCalls!.map((tc) => (
-          <ToolCallDisplay key={tc.id} toolCall={tc} />
-        ))}
+        {hasToolCalls &&
+          toolCalls!.map((tc) => <ToolCallDisplay key={tc.id} toolCall={tc} />)}
 
         {hasContent && (
           <div className="text-sm text-neutral-700 pt-1 prose prose-sm prose-neutral max-w-none">
@@ -234,11 +224,10 @@ function AssistantMessage({ message }: { message: ConversationMessage }) {
 // Main chat panel component
 export function ChatPanel() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const {
-    conversationMessages,
-    currentBlock,
-    isGenerating,
-  } = useGenerationStore();
+  // Use typed selector hooks for optimal re-rendering
+  const conversationMessages = useConversationMessages();
+  const currentBlock = useCurrentBlock();
+  const isGenerating = useIsGenerating();
 
   // Auto-scroll to bottom when new content arrives
   useEffect(() => {
@@ -247,18 +236,15 @@ export function ChatPanel() {
     }
   }, [conversationMessages, currentBlock?.thinking, currentBlock?.toolCalls]);
 
-  // Get the last message if it's an assistant message being streamed
   const lastMessage = conversationMessages[conversationMessages.length - 1];
   const isLastAssistantStreaming = lastMessage?.type === 'assistant' && lastMessage.isStreaming;
 
-  // Build display messages - use currentBlock to update the streaming assistant message
+  // Build display messages
   const displayMessages = conversationMessages.map((msg, idx) => {
-    // If this is the last assistant message and we're streaming, merge with currentBlock
     if (idx === conversationMessages.length - 1 && msg.type === 'assistant' && currentBlock) {
       return {
         ...msg,
         thinking: currentBlock.thinking || msg.thinking,
-        // During streaming, show text from currentBlock as content
         content: currentBlock.text || msg.content,
         toolCalls: currentBlock.toolCalls.length > 0 ? currentBlock.toolCalls : msg.toolCalls,
       };
@@ -266,7 +252,6 @@ export function ChatPanel() {
     return msg;
   });
 
-  // If no messages yet
   if (conversationMessages.length === 0 && !isGenerating) {
     return (
       <div className="flex items-center justify-center h-full text-neutral-400">
@@ -276,22 +261,16 @@ export function ChatPanel() {
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="h-full overflow-y-auto space-y-3 scrollbar-thin"
-    >
-      {displayMessages.map((message) => (
+    <div ref={containerRef} className="h-full overflow-y-auto space-y-3 scrollbar-thin">
+      {displayMessages.map((message) =>
         message.type === 'user' ? (
           <UserMessage key={message.id} content={message.content} />
         ) : (
           <AssistantMessage key={message.id} message={message} />
         )
-      ))}
-
-      {/* Show thinking indicator if generating but no assistant message is streaming yet */}
-      {isGenerating && !isLastAssistantStreaming && (
-        <ThinkingIndicator />
       )}
+
+      {isGenerating && !isLastAssistantStreaming && <ThinkingIndicator />}
     </div>
   );
 }

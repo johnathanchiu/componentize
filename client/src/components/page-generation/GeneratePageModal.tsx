@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, X } from 'lucide-react';
-import { useGenerationStore } from '../../store/generationStore';
+import { usePageStatus, usePageGenerationActions } from '../../store/generationStore';
 
 const DEMO_PRESETS = [
   {
@@ -29,7 +29,9 @@ interface GeneratePageModalProps {
 }
 
 export function GeneratePageModal({ onGenerate }: GeneratePageModalProps) {
-  const { pageStatus: status, pageCloseModal: closeModal } = useGenerationStore();
+  // Use typed selector hooks for optimal re-rendering
+  const status = usePageStatus();
+  const { pageCloseModal: closeModal } = usePageGenerationActions();
   const [prompt, setPrompt] = useState('');
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
 

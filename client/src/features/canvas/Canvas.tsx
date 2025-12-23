@@ -14,16 +14,23 @@ import {
 } from '@xyflow/react';
 import { toPng } from 'html-to-image';
 import { Link2, Link2Off, Camera } from 'lucide-react';
-import { useCanvasStore } from '../../store/canvasStore';
-import { useGenerationStore } from '../../store/generationStore';
-import { useProjectStore } from '../../store/projectStore';
+import {
+  useCanvasComponents,
+  useSelectedId,
+  useConnections,
+  useShowConnections,
+  useCanvasActions,
+} from './canvasStore';
+import { useCanvasKeyboard } from './useKeyboard';
+import { useGenerationActions } from '../generation/generationStore';
+import { useCurrentProject } from '../../store/projectStore';
 import { groupConnectionsByKey, generateConnectionColors } from '../../lib/sharedStore';
 import { ComponentNode, type ComponentNodeData } from './ComponentNode';
 import { PAGE_WIDTHS, type PageWidthPreset } from '../../types/index';
 
 // Helper to get page width from pageStyle
 function getPageWidth(width: number | PageWidthPreset | undefined): number {
-  if (!width) return PAGE_WIDTHS.desktop; // Default to desktop
+  if (!width) return PAGE_WIDTHS.desktop;
   if (typeof width === 'number') return width;
   return PAGE_WIDTHS[width] || PAGE_WIDTHS.desktop;
 }
@@ -43,130 +50,46 @@ function ArtboardNode({ data }: { data: { width: number; height: number; backgro
   );
 }
 
-// Register custom node types - must be outside component to prevent re-renders
+// Register custom node types
 const nodeTypes = {
   component: ComponentNode,
   artboard: ArtboardNode,
 };
 
-function DragDropCanvasInner() {
+function CanvasInner() {
   const { screenToFlowPosition, getNodes } = useReactFlow();
-  const { currentProject } = useProjectStore();
+  const currentProject = useCurrentProject();
+  const { isDragModeActive } = useCanvasKeyboard();
+
+  // Use typed selector hooks for optimal re-rendering
+  const { setGenerationMode, setEditingComponentName, startFixing } = useGenerationActions();
+
+  // Canvas state via typed selector hooks
+  const components = useCanvasComponents();
+  const selectedId = useSelectedId();
+  const connections = useConnections();
+  const showConnections = useShowConnections();
+
   const {
-    canvasComponents,
-    selectedComponentId,
-    setSelectedComponentId,
+    select,
     updateSize,
     clearSize,
     updatePosition,
-    addToCanvas,
-    removeFromCanvas,
-    stateConnections,
-    showConnections,
-    toggleShowConnections,
-    undo,
-    redo,
+    add,
+    toggleConnections,
     pushToHistory,
-  } = useCanvasStore();
-  const { setGenerationMode, setEditingComponentName, startFixing } = useGenerationStore();
+  } = useCanvasActions();
 
-  // ============================================
-  // KEYBOARD: Delete key to remove selected items
-  // ============================================
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-          return;
-        }
-
-        if (selectedComponentId) {
-          e.preventDefault();
-          removeFromCanvas(selectedComponentId);
-          setSelectedComponentId(null);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedComponentId, removeFromCanvas, setSelectedComponentId]);
-
-  // ============================================
-  // KEYBOARD: Cmd/Ctrl to enable drag mode
-  // ============================================
-
-  const [isDragModeActive, setIsDragModeActive] = useState(false);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey) {
-        setIsDragModeActive(true);
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (!e.metaKey && !e.ctrlKey) {
-        setIsDragModeActive(false);
-      }
-    };
-
-    // Handle window blur (user switches apps while holding key)
-    const handleBlur = () => setIsDragModeActive(false);
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('blur', handleBlur);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('blur', handleBlur);
-    };
-  }, []);
-
-  // ============================================
-  // KEYBOARD: Undo/Redo shortcuts
-  // ============================================
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Skip if typing in input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      // Undo: Cmd+Z (Mac) or Ctrl+Z (Windows)
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-      }
-
-      // Redo: Cmd+Shift+Z (Mac) or Ctrl+Shift+Z (Windows)
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
-        e.preventDefault();
-        redo();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
-
-  // ============================================
-  // NODES: Zustand → Derived → React Flow State
-  // ============================================
-
-  // Calculate page artboard dimensions
+  // Page artboard dimensions
   const pageWidth = getPageWidth(currentProject?.pageStyle?.width);
   const pageBackground = currentProject?.pageStyle?.background || '#ffffff';
 
+  // Derive ReactFlow nodes from canvas components
   const derivedNodes = useMemo((): Node<ComponentNodeData | { width: number; height: number; background: string }>[] => {
     if (!currentProject) return [];
 
-    // Calculate artboard height based on component bounds
-    const componentNodes = canvasComponents.map((item) => ({
+    // Component nodes
+    const componentNodes = components.map((item) => ({
       id: item.id,
       type: 'component' as const,
       position: { x: item.position.x, y: item.position.y },
@@ -180,8 +103,8 @@ function DragDropCanvasInner() {
         },
         onClearSize: () => clearSize(item.id),
       },
-      selected: selectedComponentId === item.id,
-      zIndex: 10, // Above artboard
+      selected: selectedId === item.id,
+      zIndex: 10,
       ...(item.size && {
         width: item.size.width,
         height: item.size.height,
@@ -191,11 +114,11 @@ function DragDropCanvasInner() {
     // Calculate artboard height from component bounds
     let artboardHeight = 800;
     if (componentNodes.length > 0) {
-      const maxY = Math.max(...componentNodes.map(n => n.position.y + (n.height || 200)));
+      const maxY = Math.max(...componentNodes.map((n) => n.position.y + (n.height || 200)));
       artboardHeight = Math.max(800, maxY + 100);
     }
 
-    // Artboard node at (0,0) behind everything
+    // Artboard node at (0,0)
     const artboardNode: Node<{ width: number; height: number; background: string }> = {
       id: '__artboard__',
       type: 'artboard',
@@ -207,16 +130,16 @@ function DragDropCanvasInner() {
       },
       selectable: false,
       draggable: false,
-      zIndex: 0, // Behind component nodes
+      zIndex: 0,
     };
 
     return [artboardNode, ...componentNodes];
-  }, [canvasComponents, currentProject, selectedComponentId, updateSize, startFixing, clearSize, pageWidth, pageBackground]);
+  }, [components, currentProject, selectedId, updateSize, startFixing, clearSize, pageWidth, pageBackground]);
 
-  // React Flow local state - includes both artboard and component nodes
+  // ReactFlow local state
   const [nodes, setNodes] = useState<Node<any>[]>([]);
 
-  // Sync derived nodes → React Flow state
+  // Sync derived nodes → ReactFlow state
   useEffect(() => {
     setNodes((currentNodes) => {
       const nodeMap = new Map(currentNodes.map((n) => [n.id, n]));
@@ -229,7 +152,6 @@ function DragDropCanvasInner() {
             position: derived.position,
             data: derived.data,
             selected: derived.selected,
-            // Sync width/height for resize support
             width: derived.width,
             height: derived.height,
           };
@@ -239,14 +161,11 @@ function DragDropCanvasInner() {
     });
   }, [derivedNodes]);
 
-  // ============================================
-  // EDGES: Derived from state connections
-  // ============================================
-
+  // Derive edges from state connections
   const edges = useMemo((): Edge[] => {
-    if (!showConnections || stateConnections.length === 0) return [];
+    if (!showConnections || connections.length === 0) return [];
 
-    const grouped = groupConnectionsByKey(stateConnections);
+    const grouped = groupConnectionsByKey(connections);
     const stateKeys = Object.keys(grouped);
     const colors = generateConnectionColors(stateKeys.length);
     const edgeList: Edge[] = [];
@@ -292,12 +211,9 @@ function DragDropCanvasInner() {
     });
 
     return edgeList;
-  }, [stateConnections, showConnections]);
+  }, [connections, showConnections]);
 
-  // ============================================
-  // EVENT HANDLERS
-  // ============================================
-
+  // Event handlers
   const handleNodesChange = useCallback(
     (changes: NodeChange<Node<ComponentNodeData>>[]) => {
       setNodes((current) => applyNodeChanges(changes, current));
@@ -305,18 +221,17 @@ function DragDropCanvasInner() {
       changes.forEach((change) => {
         if (change.type === 'select') {
           if (change.selected) {
-            setSelectedComponentId(change.id);
-          } else if (selectedComponentId === change.id) {
-            setSelectedComponentId(null);
+            select(change.id);
+          } else if (selectedId === change.id) {
+            select(null);
           }
         }
       });
     },
-    [setSelectedComponentId, selectedComponentId]
+    [select, selectedId]
   );
 
   const handleNodeDragStart = useCallback(() => {
-    // Push to history before drag begins (one entry per drag operation)
     pushToHistory();
   }, [pushToHistory]);
 
@@ -328,15 +243,12 @@ function DragDropCanvasInner() {
   );
 
   const handlePaneClick = useCallback(() => {
-    setSelectedComponentId(null);
+    select(null);
     setEditingComponentName(null);
     setGenerationMode('create');
-  }, [setSelectedComponentId, setEditingComponentName, setGenerationMode]);
+  }, [select, setEditingComponentName, setGenerationMode]);
 
-  // ============================================
-  // DRAG & DROP FROM LIBRARY
-  // ============================================
-
+  // Drag & drop from library
   const handleDragOver = useCallback((event: DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
@@ -354,19 +266,16 @@ function DragDropCanvasInner() {
         y: event.clientY,
       });
 
-      addToCanvas({
+      add({
         id: `${componentName}-${Date.now()}`,
         componentName,
         position: { x: position.x, y: position.y },
       });
     },
-    [screenToFlowPosition, addToCanvas]
+    [screenToFlowPosition, add]
   );
 
-  // ============================================
-  // DEBUG: Image export and state exposure
-  // ============================================
-
+  // Image export
   const downloadImage = useCallback(async () => {
     const flowNodes = getNodes();
     if (flowNodes.length === 0) return;
@@ -397,25 +306,21 @@ function DragDropCanvasInner() {
     }
   }, [getNodes, currentProject]);
 
-  // Expose debug state to window for Playwright/console access
+  // Debug state exposure
   useEffect(() => {
     if (typeof window !== 'undefined') {
       (window as any).__CANVAS_DEBUG__ = {
         nodes,
         edges,
-        canvasComponents,
+        components,
         downloadImage,
         currentProject,
       };
     }
-  }, [nodes, edges, canvasComponents, downloadImage, currentProject]);
+  }, [nodes, edges, components, downloadImage, currentProject]);
 
-  // ============================================
-  // RENDER
-  // ============================================
-
-  const hasConnections = stateConnections.length > 0;
-  const hasContent = canvasComponents.length > 0;
+  const hasConnections = connections.length > 0;
+  const hasContent = components.length > 0;
 
   return (
     <div className="h-full w-full relative bg-neutral-200" data-canvas="true">
@@ -495,7 +400,7 @@ function DragDropCanvasInner() {
         )}
         {hasConnections && (
           <button
-            onClick={toggleShowConnections}
+            onClick={toggleConnections}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors shadow-sm ${
               showConnections
                 ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
@@ -521,10 +426,10 @@ function DragDropCanvasInner() {
   );
 }
 
-export function DragDropCanvas() {
+export function Canvas() {
   return (
     <ReactFlowProvider>
-      <DragDropCanvasInner />
+      <CanvasInner />
     </ReactFlowProvider>
   );
 }

@@ -1,6 +1,12 @@
 import { useEffect, useState, useRef, type ComponentType, memo } from 'react';
 import { type NodeProps } from '@xyflow/react';
-import { useGenerationStore } from '../../store/generationStore';
+import {
+  useIsGenerating,
+  useGenerationMode,
+  useEditingComponentName,
+  useComponentVersion,
+  useGenerationActions,
+} from '../generation/generationStore';
 import { compileComponent } from '../../lib/componentRenderer';
 import { ComponentErrorBoundary } from './ErrorBoundary';
 import { ErrorOverlay } from './ErrorOverlay';
@@ -9,7 +15,7 @@ import type { Size } from '../../types/index';
 // Default size for components that don't have an explicit size set
 const DEFAULT_SIZE: Size = { width: 300, height: 200 };
 
-// Resize handle component - extracted for clarity
+// Resize handle component
 interface ResizeHandleProps {
   startWidth: number;
   startHeight: number;
@@ -68,11 +74,11 @@ function ResizeHandle({ startWidth, startHeight, onResize }: ResizeHandleProps) 
 export interface ComponentNodeData extends Record<string, unknown> {
   componentName: string;
   projectId: string;
-  targetSize?: Size; // User-set size (actual container dimensions)
+  targetSize?: Size;
   onFix?: (errorMessage: string, errorStack?: string) => void;
   onConnectionsDetected?: (source: string) => void;
   onResize?: (width: number, height: number) => void;
-  onClearSize?: () => void; // Reset to default size
+  onClearSize?: () => void;
 }
 
 function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNodeData }) {
@@ -81,9 +87,13 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
   const [loading, setLoading] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
 
-  const { isGenerating, generationMode, editingComponentName, componentVersions, startEditing } = useGenerationStore();
+  // Use typed selector hooks for optimal re-rendering
+  const isGenerating = useIsGenerating();
+  const generationMode = useGenerationMode();
+  const editingComponentName = useEditingComponentName();
+  const componentVersion = useComponentVersion(data.componentName);
+  const { startEditing } = useGenerationActions();
 
-  const componentVersion = componentVersions[data.componentName] || 0;
   const isBeingFixed = generationMode === 'fix' && editingComponentName === data.componentName && isGenerating;
 
   // Store callback in ref to avoid re-triggering effect
@@ -106,7 +116,6 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
       .then((source) => {
         if (abortController.signal.aborted) return;
         connectionsCallbackRef.current?.(source);
-        // Compile directly - no second fetch needed
         const comp = compileComponent(source, data.componentName);
         setComponent(() => comp);
         setLoading(false);
@@ -146,15 +155,14 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
   // Get current size - use targetSize or default
   const currentSize = data.targetSize || DEFAULT_SIZE;
 
-  // Container style - set actual width/height on the container
-  // Component uses w-full h-full to fill this container and reflows naturally
+  // Container style
   const containerStyle: React.CSSProperties = {
     width: currentSize.width,
     height: currentSize.height,
     overflow: 'hidden',
   };
 
-  // Selection/hover styling with soft shadows for Figma-like feel
+  // Selection/hover styling
   const selectionStyle: React.CSSProperties = selected
     ? {
         outline: '2px solid #3b82f6',
@@ -167,9 +175,7 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
           outlineOffset: '2px',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.08)',
         }
-      : {
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
-        };
+      : {};
 
   return (
     <div
@@ -179,12 +185,12 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Main container with selection/hover indicator and soft shadows */}
+      {/* Main container */}
       <div
         className="relative rounded"
         style={{ ...containerStyle, ...selectionStyle }}
       >
-        {/* Component content - fills container naturally via w-full h-full */}
+        {/* Component content */}
         {loading && (
           <div className="flex items-center justify-center w-full h-full text-xs text-neutral-400">
             Loading...
@@ -210,7 +216,7 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
         )}
       </div>
 
-      {/* Resize handle - sibling to content container, positioned at bottom-right */}
+      {/* Resize handle */}
       {(selected || isHovered) && (
         <ResizeHandle
           startWidth={currentSize.width}

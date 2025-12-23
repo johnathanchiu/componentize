@@ -278,8 +278,29 @@ class ProjectService {
           break;
 
         case 'thinking_delta':
+          // Start assistant message if not already started
+          if (!currentAssistant) {
+            currentAssistant = {
+              role: 'assistant',
+              content: '',
+              timestamp: event.timestamp,
+            };
+          }
           // Accumulate thinking text
           accumulatedThinking += event.data?.content || event.message || '';
+          break;
+
+        case 'text_delta':
+          // Start assistant message if not already started
+          if (!currentAssistant) {
+            currentAssistant = {
+              role: 'assistant',
+              content: '',
+              timestamp: event.timestamp,
+            };
+          }
+          // Accumulate text content
+          currentAssistant.content = (currentAssistant.content || '') + (event.data?.content || event.message || '');
           break;
 
         case 'tool_call':

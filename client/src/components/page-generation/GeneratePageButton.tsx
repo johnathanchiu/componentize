@@ -1,8 +1,10 @@
 import { Sparkles } from 'lucide-react';
-import { useGenerationStore } from '../../store/generationStore';
+import { usePageStatus, usePageGenerationActions } from '../../store/generationStore';
 
 export function GeneratePageButton() {
-  const { pageOpenModal, pageStatus } = useGenerationStore();
+  // Use typed selector hooks for optimal re-rendering
+  const pageStatus = usePageStatus();
+  const { pageOpenModal } = usePageGenerationActions();
 
   const isGenerating = pageStatus === 'planning' || pageStatus === 'generating';
 

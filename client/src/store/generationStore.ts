@@ -1,17 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
 import type { StreamEvent, ComponentPlan, CanvasComponent } from '../types/index';
-
-// Re-export from new focused stores for backward compatibility
-export {
-  useConversationStore,
-  type ServerConversationMessage,
-  type ToolCallState,
-  type ConversationMessage,
-  type AssistantBlock,
-} from './conversationStore';
-
-export { useUIStore } from './uiStore';
 
 // Page generation status
 export type PageGenerationStatus = 'idle' | 'modal' | 'planning' | 'generating' | 'complete' | 'error';
@@ -128,163 +118,45 @@ export const usePageGenerationStore = create<PageGenerationStore>()(
   )
 );
 
-// Legacy compatibility layer - combines all stores
-// This allows existing code to work without changes
-import { useConversationStore } from './conversationStore';
-import { useUIStore } from './uiStore';
+// ============================================================================
+// Selector Hooks - Use these instead of destructuring the store directly
+// ============================================================================
 
-export const useGenerationStore = Object.assign(
-  // Main hook returns combined state
-  () => {
-    const conversation = useConversationStore();
-    const ui = useUIStore();
-    const page = usePageGenerationStore();
+// State selectors (one per value - only re-renders when that value changes)
+export const usePageStatus = () => usePageGenerationStore((s) => s.pageStatus);
+export const usePagePlan = () => usePageGenerationStore((s) => s.pagePlan);
+export const usePageCurrentComponentIndex = () => usePageGenerationStore((s) => s.pageCurrentComponentIndex);
+export const usePageTotalComponents = () => usePageGenerationStore((s) => s.pageTotalComponents);
+export const usePageCompletedComponents = () => usePageGenerationStore((s) => s.pageCompletedComponents);
+export const usePageFailedComponents = () => usePageGenerationStore((s) => s.pageFailedComponents);
+export const usePageCanvasComponents = () => usePageGenerationStore((s) => s.pageCanvasComponents);
+export const usePageEvents = () => usePageGenerationStore((s) => s.pageEvents);
+export const usePageCurrentThinking = () => usePageGenerationStore((s) => s.pageCurrentThinking);
 
-    return {
-      // From conversation store
-      currentProjectId: conversation.currentProjectId,
-      setCurrentProjectId: (id: string | null) => {
-        conversation.setCurrentProjectId(id);
-      },
-      conversationMessages: conversation.conversationMessages,
-      addUserMessage: conversation.addUserMessage,
-      startAssistantMessage: conversation.startAssistantMessage,
-      updateCurrentAssistantThinking: conversation.updateCurrentAssistantThinking,
-      updateCurrentAssistantToolCalls: conversation.updateCurrentAssistantToolCalls,
-      completeAssistantMessage: conversation.completeAssistantMessage,
-      clearConversation: conversation.clearConversation,
-      loadConversationFromHistory: conversation.loadConversationFromHistory,
-      currentBlock: conversation.currentBlock,
-      startNewBlock: conversation.startNewBlock,
-      appendThinkingDelta: conversation.appendThinkingDelta,
-      appendTextDelta: conversation.appendTextDelta,
-      addToolCall: conversation.addToolCall,
-      setToolResult: conversation.setToolResult,
-      completeBlock: conversation.completeBlock,
-      agentTodos: conversation.agentTodos,
-      setAgentTodos: conversation.setAgentTodos,
+// Convenience selector for progress tracking (use useShallow for object)
+export const usePageProgress = () => usePageGenerationStore(
+  useShallow((s) => ({
+    currentIndex: s.pageCurrentComponentIndex,
+    total: s.pageTotalComponents,
+    completed: s.pageCompletedComponents,
+    failed: s.pageFailedComponents,
+  }))
+);
 
-      // From UI store
-      isGenerating: ui.isGenerating,
-      setIsGenerating: ui.setIsGenerating,
-      streamStatus: ui.streamStatus,
-      setStreamStatus: ui.setStreamStatus,
-      isStreamPanelExpanded: ui.isStreamPanelExpanded,
-      setStreamPanelExpanded: ui.setStreamPanelExpanded,
-      currentComponentName: ui.currentComponentName,
-      setCurrentComponentName: ui.setCurrentComponentName,
-      generationMode: ui.generationMode,
-      setGenerationMode: ui.setGenerationMode,
-      editingComponentName: ui.editingComponentName,
-      setEditingComponentName: ui.setEditingComponentName,
-      pendingFixError: ui.pendingFixError,
-      setPendingFixError: ui.setPendingFixError,
-      componentVersions: ui.componentVersions,
-      incrementComponentVersion: ui.incrementComponentVersion,
-      startEditing: ui.startEditing,
-      startFixing: ui.startFixing,
-
-      // From page generation store
-      pageStatus: page.pageStatus,
-      pagePlan: page.pagePlan,
-      pageCurrentComponentIndex: page.pageCurrentComponentIndex,
-      pageTotalComponents: page.pageTotalComponents,
-      pageCompletedComponents: page.pageCompletedComponents,
-      pageFailedComponents: page.pageFailedComponents,
-      pageCanvasComponents: page.pageCanvasComponents,
-      pageEvents: page.pageEvents,
-      pageCurrentThinking: page.pageCurrentThinking,
-      pageOpenModal: page.pageOpenModal,
-      pageCloseModal: page.pageCloseModal,
-      pageStartGeneration: page.pageStartGeneration,
-      pageSetPlan: page.pageSetPlan,
-      pageSetCurrentComponent: page.pageSetCurrentComponent,
-      pageAddThinking: page.pageAddThinking,
-      pageMarkComponentComplete: page.pageMarkComponentComplete,
-      pageMarkComponentFailed: page.pageMarkComponentFailed,
-      pageAddEvent: page.pageAddEvent,
-      pageComplete: page.pageComplete,
-      pageSetError: page.pageSetError,
-      pageReset: page.pageReset,
-
-      // Deprecated - no longer needed with new stores
-      streamingEvents: [] as StreamEvent[],
-      addStreamingEvent: () => {},
-      setStreamingEvents: () => {},
-      clearStreamingEvents: () => {},
-    };
-  },
-  {
-    // Static methods for direct access
-    getState: () => {
-      const conversation = useConversationStore.getState();
-      const ui = useUIStore.getState();
-      const page = usePageGenerationStore.getState();
-
-      return {
-        currentProjectId: conversation.currentProjectId,
-        setCurrentProjectId: conversation.setCurrentProjectId,
-        conversationMessages: conversation.conversationMessages,
-        addUserMessage: conversation.addUserMessage,
-        startAssistantMessage: conversation.startAssistantMessage,
-        updateCurrentAssistantThinking: conversation.updateCurrentAssistantThinking,
-        updateCurrentAssistantToolCalls: conversation.updateCurrentAssistantToolCalls,
-        completeAssistantMessage: conversation.completeAssistantMessage,
-        clearConversation: conversation.clearConversation,
-        loadConversationFromHistory: conversation.loadConversationFromHistory,
-        currentBlock: conversation.currentBlock,
-        startNewBlock: conversation.startNewBlock,
-        appendThinkingDelta: conversation.appendThinkingDelta,
-        appendTextDelta: conversation.appendTextDelta,
-        addToolCall: conversation.addToolCall,
-        setToolResult: conversation.setToolResult,
-        completeBlock: conversation.completeBlock,
-        agentTodos: conversation.agentTodos,
-        setAgentTodos: conversation.setAgentTodos,
-        isGenerating: ui.isGenerating,
-        setIsGenerating: ui.setIsGenerating,
-        streamStatus: ui.streamStatus,
-        setStreamStatus: ui.setStreamStatus,
-        isStreamPanelExpanded: ui.isStreamPanelExpanded,
-        setStreamPanelExpanded: ui.setStreamPanelExpanded,
-        currentComponentName: ui.currentComponentName,
-        setCurrentComponentName: ui.setCurrentComponentName,
-        generationMode: ui.generationMode,
-        setGenerationMode: ui.setGenerationMode,
-        editingComponentName: ui.editingComponentName,
-        setEditingComponentName: ui.setEditingComponentName,
-        pendingFixError: ui.pendingFixError,
-        setPendingFixError: ui.setPendingFixError,
-        componentVersions: ui.componentVersions,
-        incrementComponentVersion: ui.incrementComponentVersion,
-        startEditing: ui.startEditing,
-        startFixing: ui.startFixing,
-        pageStatus: page.pageStatus,
-        pagePlan: page.pagePlan,
-        pageCurrentComponentIndex: page.pageCurrentComponentIndex,
-        pageTotalComponents: page.pageTotalComponents,
-        pageCompletedComponents: page.pageCompletedComponents,
-        pageFailedComponents: page.pageFailedComponents,
-        pageCanvasComponents: page.pageCanvasComponents,
-        pageEvents: page.pageEvents,
-        pageCurrentThinking: page.pageCurrentThinking,
-        pageOpenModal: page.pageOpenModal,
-        pageCloseModal: page.pageCloseModal,
-        pageStartGeneration: page.pageStartGeneration,
-        pageSetPlan: page.pageSetPlan,
-        pageSetCurrentComponent: page.pageSetCurrentComponent,
-        pageAddThinking: page.pageAddThinking,
-        pageMarkComponentComplete: page.pageMarkComponentComplete,
-        pageMarkComponentFailed: page.pageMarkComponentFailed,
-        pageAddEvent: page.pageAddEvent,
-        pageComplete: page.pageComplete,
-        pageSetError: page.pageSetError,
-        pageReset: page.pageReset,
-        streamingEvents: [] as StreamEvent[],
-        addStreamingEvent: () => {},
-        setStreamingEvents: () => {},
-        clearStreamingEvents: () => {},
-      };
-    },
-  }
+// Actions (grouped - use useShallow to prevent infinite loops from object creation)
+export const usePageGenerationActions = () => usePageGenerationStore(
+  useShallow((s) => ({
+    pageOpenModal: s.pageOpenModal,
+    pageCloseModal: s.pageCloseModal,
+    pageStartGeneration: s.pageStartGeneration,
+    pageSetPlan: s.pageSetPlan,
+    pageSetCurrentComponent: s.pageSetCurrentComponent,
+    pageAddThinking: s.pageAddThinking,
+    pageMarkComponentComplete: s.pageMarkComponentComplete,
+    pageMarkComponentFailed: s.pageMarkComponentFailed,
+    pageAddEvent: s.pageAddEvent,
+    pageComplete: s.pageComplete,
+    pageSetError: s.pageSetError,
+    pageReset: s.pageReset,
+  }))
 );

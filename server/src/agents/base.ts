@@ -95,6 +95,14 @@ When writing React components:
     while (iteration < appConfig.api.maxIterations) {
       iteration++;
 
+      // Emit turn_start at the beginning of each agent turn
+      yield {
+        type: 'turn_start',
+        message: `Starting turn ${iteration}`,
+        timestamp: Date.now(),
+        data: { iteration }
+      };
+
       try {
         const stream = this.client.messages.stream({
           model: appConfig.api.modelName,
@@ -207,6 +215,19 @@ When writing React components:
         const toolResults: Array<{ id: string; result: ToolResult }> = [];
 
         for (const toolCall of pendingToolCalls) {
+          // Emit tool_call event BEFORE execution
+          yield {
+            type: 'tool_call',
+            message: `Calling ${toolCall.name}`,
+            timestamp: Date.now(),
+            data: {
+              toolUseId: toolCall.id,
+              toolName: toolCall.name,
+              toolInput: toolCall.input as Record<string, unknown>,
+              blockIndex: toolCall.index,
+            }
+          };
+
           if (!this.projectId) {
             const errorResult: ToolResult = { success: false, error: 'No project context set' };
             toolResults.push({ id: toolCall.id, result: errorResult });
