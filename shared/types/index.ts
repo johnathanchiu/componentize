@@ -177,27 +177,35 @@ export interface StreamEvent {
   message: string;
   timestamp: number;
   data?: {
-    content?: string;           // For thinking events - the reasoning text
+    // Block tracking (new simplified model)
+    blockIndex?: number;        // Index of content block (for thinking/text/tool deltas)
+    content?: string;           // For thinking/text events - the text content
+
+    // Tool events
     toolName?: string;          // For tool events
     toolInput?: Record<string, unknown>;  // Tool parameters (sanitized)
     toolUseId?: string;         // For correlating tool_start with tool_result
-    iteration?: number;         // Current iteration
-    maxIterations?: number;     // Max iterations allowed
     status?: 'success' | 'error';  // For tool_result and complete
     result?: unknown;           // Tool result data
-    reason?: string;            // For complete event - why task ended (end_turn, max_iterations, etc.)
-    // Code streaming fields
-    partialCode?: string;        // For code_streaming - partial code being generated
-    code?: string;               // For code_complete - full generated code
-    lineCount?: number;          // Number of lines in the code
-    // Page generation specific fields
-    plan?: ComponentPlan[];              // For page_plan event
-    componentIndex?: number;             // Current component (1-indexed)
-    totalComponents?: number;            // Total in plan
-    componentName?: string;              // Name of component being processed
-    canvasComponent?: CanvasComponent;   // For canvas_update event
-    pageResult?: PageGenerationResult;   // For final success event
-    todos?: AgentTodo[];                 // For todo_update event
+
+    // Completion
+    reason?: string;            // For complete event - why task ended
+
+    // Canvas/Todo updates (embedded in tool_result)
+    canvasComponent?: CanvasComponent;   // Component added to canvas
+    todos?: AgentTodo[];                 // Updated todo list
+
+    // Legacy fields (kept for backward compatibility during migration)
+    iteration?: number;
+    maxIterations?: number;
+    partialCode?: string;
+    code?: string;
+    lineCount?: number;
+    plan?: ComponentPlan[];
+    componentIndex?: number;
+    totalComponents?: number;
+    componentName?: string;
+    pageResult?: PageGenerationResult;
   };
 }
 

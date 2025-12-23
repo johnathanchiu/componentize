@@ -2,7 +2,6 @@ import { useCallback, useMemo, useEffect, useState, type DragEvent } from 'react
 import {
   ReactFlow,
   ReactFlowProvider,
-  Background,
   MiniMap,
   Controls,
   useReactFlow,
@@ -12,7 +11,6 @@ import {
   type Node,
   type NodeChange,
   type Edge,
-  BackgroundVariant,
 } from '@xyflow/react';
 import { toPng } from 'html-to-image';
 import { Link2, Link2Off, Camera } from 'lucide-react';
@@ -21,10 +19,34 @@ import { useGenerationStore } from '../../store/generationStore';
 import { useProjectStore } from '../../store/projectStore';
 import { groupConnectionsByKey, generateConnectionColors } from '../../lib/sharedStore';
 import { ComponentNode, type ComponentNodeData } from './ComponentNode';
+import { PAGE_WIDTHS, type PageWidthPreset } from '../../types/index';
+
+// Helper to get page width from pageStyle
+function getPageWidth(width: number | PageWidthPreset | undefined): number {
+  if (!width) return PAGE_WIDTHS.desktop; // Default to desktop
+  if (typeof width === 'number') return width;
+  return PAGE_WIDTHS[width] || PAGE_WIDTHS.desktop;
+}
+
+// Artboard node - renders the page background
+function ArtboardNode({ data }: { data: { width: number; height: number; background: string } }) {
+  return (
+    <div
+      className="shadow-2xl"
+      style={{
+        width: data.width,
+        height: data.height,
+        background: data.background,
+        pointerEvents: 'none',
+      }}
+    />
+  );
+}
 
 // Register custom node types - must be outside component to prevent re-renders
 const nodeTypes = {
   component: ComponentNode,
+  artboard: ArtboardNode,
 };
 
 function DragDropCanvasInner() {
@@ -136,12 +158,17 @@ function DragDropCanvasInner() {
   // NODES: Zustand → Derived → React Flow State
   // ============================================
 
-  const derivedNodes = useMemo((): Node<ComponentNodeData>[] => {
+  // Calculate page artboard dimensions
+  const pageWidth = getPageWidth(currentProject?.pageStyle?.width);
+  const pageBackground = currentProject?.pageStyle?.background || '#ffffff';
+
+  const derivedNodes = useMemo((): Node<ComponentNodeData | { width: number; height: number; background: string }>[] => {
     if (!currentProject) return [];
 
-    return canvasComponents.map((item) => ({
+    // Calculate artboard height based on component bounds
+    const componentNodes = canvasComponents.map((item) => ({
       id: item.id,
-      type: 'component',
+      type: 'component' as const,
       position: { x: item.position.x, y: item.position.y },
       data: {
         componentName: item.componentName,
@@ -154,15 +181,40 @@ function DragDropCanvasInner() {
         onClearSize: () => clearSize(item.id),
       },
       selected: selectedComponentId === item.id,
+      zIndex: 10, // Above artboard
       ...(item.size && {
         width: item.size.width,
         height: item.size.height,
       }),
     }));
-  }, [canvasComponents, currentProject, selectedComponentId, updateSize, startFixing, clearSize]);
 
-  // React Flow local state
-  const [nodes, setNodes] = useState<Node<ComponentNodeData>[]>([]);
+    // Calculate artboard height from component bounds
+    let artboardHeight = 800;
+    if (componentNodes.length > 0) {
+      const maxY = Math.max(...componentNodes.map(n => n.position.y + (n.height || 200)));
+      artboardHeight = Math.max(800, maxY + 100);
+    }
+
+    // Artboard node at (0,0) behind everything
+    const artboardNode: Node<{ width: number; height: number; background: string }> = {
+      id: '__artboard__',
+      type: 'artboard',
+      position: { x: 0, y: 0 },
+      data: {
+        width: pageWidth,
+        height: artboardHeight,
+        background: pageBackground,
+      },
+      selectable: false,
+      draggable: false,
+      zIndex: 0, // Behind component nodes
+    };
+
+    return [artboardNode, ...componentNodes];
+  }, [canvasComponents, currentProject, selectedComponentId, updateSize, startFixing, clearSize, pageWidth, pageBackground]);
+
+  // React Flow local state - includes both artboard and component nodes
+  const [nodes, setNodes] = useState<Node<any>[]>([]);
 
   // Sync derived nodes → React Flow state
   useEffect(() => {
@@ -366,16 +418,26 @@ function DragDropCanvasInner() {
   const hasContent = canvasComponents.length > 0;
 
   return (
-    <div className="h-full w-full relative" data-canvas="true">
+    <div className="h-full w-full relative bg-neutral-200" data-canvas="true">
       {!hasContent ? (
         <div
-          className="h-full flex items-center justify-center bg-neutral-50"
+          className="h-full flex items-center justify-center"
           onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
-          <div className="text-center text-neutral-400">
-            <div className="text-base mb-1">Drop components here</div>
-            <div className="text-sm">Drag from the library to start building</div>
+          {/* Empty state artboard preview */}
+          <div
+            className="flex items-center justify-center shadow-xl rounded-sm"
+            style={{
+              width: Math.min(pageWidth * 0.5, 600),
+              height: 400,
+              background: pageBackground,
+            }}
+          >
+            <div className="text-center text-neutral-400">
+              <div className="text-base mb-1">Drop components here</div>
+              <div className="text-sm">Drag from the library to start building your page</div>
+            </div>
           </div>
         </div>
       ) : (
@@ -395,15 +457,15 @@ function DragDropCanvasInner() {
           fitView={false}
           minZoom={0.1}
           maxZoom={2}
-          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          defaultViewport={{ x: 100, y: 50, zoom: 1 }}
           zoomOnDoubleClick={false}
           proOptions={{ hideAttribution: true }}
+          style={{ background: '#e5e5e5' }}
         >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#D4D4D4" />
           <MiniMap
             nodeColor="#a3a3a3"
             nodeStrokeWidth={3}
-            maskColor="rgba(255, 255, 255, 0.8)"
+            maskColor="rgba(229, 229, 229, 0.8)"
             className="!bg-white/90 !border-neutral-300"
             zoomable
             pannable

@@ -1,102 +1,23 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { StreamEvent, StreamStatus, ComponentPlan, CanvasComponent, AgentTodo } from '../types/index';
+import type { StreamEvent, ComponentPlan, CanvasComponent } from '../types/index';
 
-// Server-side conversation message format (from history.json)
-export interface ServerConversationMessage {
-  role: 'user' | 'assistant' | 'tool';
-  content: string;
-  timestamp: number;
-  thinking?: string;
-  toolCalls?: Array<{
-    id: string;
-    name: string;
-    args?: Record<string, unknown>;
-    status?: 'pending' | 'success' | 'error';
-    result?: unknown;
-  }>;
-  toolCallId?: string;
-}
+// Re-export from new focused stores for backward compatibility
+export {
+  useConversationStore,
+  type ServerConversationMessage,
+  type ToolCallState,
+  type ConversationMessage,
+  type AssistantBlock,
+} from './conversationStore';
 
-interface ErrorContext {
-  message: string;
-  stack?: string;
-}
+export { useUIStore } from './uiStore';
 
-// Tool call state for block accumulation
-export interface ToolCallState {
-  id: string;
-  name: string;
-  args: unknown;
-  status: 'pending' | 'success' | 'error';
-  result?: unknown;
-}
-
-// Assistant block - accumulated from delta events
-export interface AssistantBlock {
-  thinking: string;           // Accumulated thinking_delta text (Claude's internal reasoning)
-  text: string;               // Accumulated text_delta text (Claude's response to user)
-  toolCalls: ToolCallState[]; // Tool calls in this turn
-}
-
-// Conversation message - groups events by turn for chat display
-export interface ConversationMessage {
-  id: string;
-  type: 'user' | 'assistant';
-  content: string;              // User prompt or assistant final text
-  thinking?: string;            // Accumulated thinking (for assistant)
-  toolCalls?: ToolCallState[];  // Tool calls in this turn
-  isStreaming?: boolean;        // Currently streaming
-  timestamp: number;
-}
-
-// Page generation status (merged from pageGenerationStore)
+// Page generation status
 export type PageGenerationStatus = 'idle' | 'modal' | 'planning' | 'generating' | 'complete' | 'error';
 
-interface GenerationStore {
-  // Project context for session scoping
-  currentProjectId: string | null;
-  setCurrentProjectId: (projectId: string | null) => void;
-
-  // UI state
-  isGenerating: boolean;
-  setIsGenerating: (value: boolean) => void;
-
-  // Single component streaming state
-  streamingEvents: StreamEvent[];
-  streamStatus: StreamStatus;
-  isStreamPanelExpanded: boolean;
-  currentComponentName: string;
-  generationMode: 'create' | 'edit' | 'fix';
-  editingComponentName: string | null;
-  pendingFixError: ErrorContext | null;
-  componentVersions: Record<string, number>;
-
-  // Block accumulation state (for delta-based streaming)
-  currentBlock: AssistantBlock | null;
-  startNewBlock: () => void;
-  appendThinkingDelta: (delta: string) => void;
-  appendTextDelta: (delta: string) => void;  // For extended thinking text responses
-  addToolCall: (id: string, name: string, args: unknown) => void;
-  setToolResult: (toolCallId: string, status: 'success' | 'error', result: unknown) => void;
-  completeBlock: () => void;
-
-  // Conversation messages - grouped by turn for chat display
-  conversationMessages: ConversationMessage[];
-  addUserMessage: (content: string) => void;
-  startAssistantMessage: () => void;
-  updateCurrentAssistantThinking: (thinking: string) => void;
-  updateCurrentAssistantToolCalls: (toolCalls: ToolCallState[]) => void;
-  completeAssistantMessage: (content?: string) => void;
-  clearConversation: () => void;
-  // Load conversation from server history
-  loadConversationFromHistory: (history: ServerConversationMessage[]) => void;
-
-  // Agent-managed todos
-  agentTodos: AgentTodo[];
-  setAgentTodos: (todos: AgentTodo[]) => void;
-
-  // Page generation state (merged from pageGenerationStore)
+interface PageGenerationStore {
+  // Page generation state
   pageStatus: PageGenerationStatus;
   pagePlan: ComponentPlan[] | null;
   pageCurrentComponentIndex: number;
@@ -107,21 +28,7 @@ interface GenerationStore {
   pageEvents: StreamEvent[];
   pageCurrentThinking: string;
 
-  // Single component actions
-  addStreamingEvent: (event: StreamEvent) => void;
-  setStreamingEvents: (events: StreamEvent[]) => void;
-  clearStreamingEvents: () => void;
-  setStreamStatus: (status: StreamStatus) => void;
-  setStreamPanelExpanded: (expanded: boolean) => void;
-  setCurrentComponentName: (name: string) => void;
-  setGenerationMode: (mode: 'create' | 'edit' | 'fix') => void;
-  setEditingComponentName: (name: string | null) => void;
-  setPendingFixError: (error: ErrorContext | null) => void;
-  incrementComponentVersion: (componentName: string) => void;
-  startEditing: (componentName: string) => void;
-  startFixing: (componentName: string, error?: ErrorContext) => void;
-
-  // Page generation actions (merged from pageGenerationStore)
+  // Page generation actions
   pageOpenModal: () => void;
   pageCloseModal: () => void;
   pageStartGeneration: () => void;
@@ -136,69 +43,9 @@ interface GenerationStore {
   pageReset: () => void;
 }
 
-export const useGenerationStore = create<GenerationStore>()(
+export const usePageGenerationStore = create<PageGenerationStore>()(
   persist(
     (set) => ({
-      // Project context
-      currentProjectId: null,
-      setCurrentProjectId: (projectId) => set((state) => {
-        // Only reset if project actually changed
-        if (state.currentProjectId === projectId) {
-          return { currentProjectId: projectId };
-        }
-        // Clear generation state when switching projects
-        return {
-          currentProjectId: projectId,
-          // Reset single component streaming state
-          streamingEvents: [],
-          streamStatus: 'idle',
-          currentComponentName: '',
-          generationMode: 'create',
-          editingComponentName: null,
-          pendingFixError: null,
-          isGenerating: false,
-          // Reset block accumulation state
-          currentBlock: null,
-          // Reset conversation messages
-          conversationMessages: [],
-          // Reset agent todos
-          agentTodos: [],
-          // Reset page generation state
-          pageStatus: 'idle',
-          pagePlan: null,
-          pageCurrentComponentIndex: 0,
-          pageTotalComponents: 0,
-          pageCompletedComponents: [],
-          pageFailedComponents: [],
-          pageCanvasComponents: [],
-          pageEvents: [],
-          pageCurrentThinking: '',
-        };
-      }),
-
-      // UI state
-      isGenerating: false,
-      setIsGenerating: (value) => set({ isGenerating: value }),
-
-      // Single component streaming state
-      streamingEvents: [],
-      streamStatus: 'idle',
-      isStreamPanelExpanded: false,
-      currentComponentName: '',
-      generationMode: 'create',
-      editingComponentName: null,
-      pendingFixError: null,
-      componentVersions: {},
-
-      // Block accumulation state (for delta-based streaming)
-      currentBlock: null,
-
-      // Conversation messages - grouped by turn
-      conversationMessages: [],
-
-      // Agent-managed todos
-      agentTodos: [],
-
       // Page generation state
       pageStatus: 'idle',
       pagePlan: null,
@@ -209,209 +56,6 @@ export const useGenerationStore = create<GenerationStore>()(
       pageCanvasComponents: [],
       pageEvents: [],
       pageCurrentThinking: '',
-
-      // Single component actions
-      addStreamingEvent: (event) =>
-        set((state) => ({
-          streamingEvents: [...state.streamingEvents, event],
-          streamStatus:
-            // New delta-based events
-            event.type === 'turn_start' ? 'thinking' :
-            event.type === 'thinking_delta' ? 'thinking' :
-            event.type === 'tool_call' ? 'acting' :
-            event.type === 'complete' ? (event.data?.status === 'error' ? 'error' : 'success') :
-            // Legacy events (kept for backward compatibility)
-            event.type === 'thinking' ? 'thinking' :
-            event.type === 'tool_start' || event.type === 'tool_result' ? 'acting' :
-            event.type === 'success' ? 'success' :
-            event.type === 'error' ? 'error' :
-            state.streamStatus,
-        })),
-
-      setStreamingEvents: (events) => set({ streamingEvents: events }),
-      clearStreamingEvents: () => set({ streamingEvents: [], streamStatus: 'idle' }),
-      setStreamStatus: (status) => set({ streamStatus: status }),
-      setStreamPanelExpanded: (expanded) => set({ isStreamPanelExpanded: expanded }),
-      setCurrentComponentName: (name) => set({ currentComponentName: name }),
-      setGenerationMode: (mode) => set({ generationMode: mode }),
-      setEditingComponentName: (name) => set({ editingComponentName: name }),
-      setPendingFixError: (error) => set({ pendingFixError: error }),
-
-      incrementComponentVersion: (componentName) =>
-        set((state) => ({
-          componentVersions: {
-            ...state.componentVersions,
-            [componentName]: (state.componentVersions[componentName] || 0) + 1,
-          },
-        })),
-
-      startEditing: (componentName) => set({
-        generationMode: 'edit',
-        editingComponentName: componentName,
-        currentComponentName: componentName,
-        isStreamPanelExpanded: true,
-        pendingFixError: null,
-      }),
-
-      startFixing: (componentName, error) => set({
-        generationMode: 'fix',
-        editingComponentName: componentName,
-        currentComponentName: componentName,
-        isStreamPanelExpanded: true,
-        pendingFixError: error || null,
-      }),
-
-      // Block accumulation actions (for delta-based streaming)
-      startNewBlock: () => set({
-        currentBlock: { thinking: '', text: '', toolCalls: [] },
-        streamStatus: 'thinking',
-      }),
-
-      appendThinkingDelta: (delta) => set((state) => ({
-        currentBlock: state.currentBlock
-          ? { ...state.currentBlock, thinking: state.currentBlock.thinking + delta }
-          : { thinking: delta, text: '', toolCalls: [] }
-      })),
-
-      appendTextDelta: (delta) => set((state) => ({
-        currentBlock: state.currentBlock
-          ? { ...state.currentBlock, text: state.currentBlock.text + delta }
-          : { thinking: '', text: delta, toolCalls: [] }
-      })),
-
-      addToolCall: (id, name, args) => set((state) => {
-        // Deduplicate by tool use ID - prevents duplicates on stream resume
-        const existingIds = new Set(state.currentBlock?.toolCalls.map(tc => tc.id) || []);
-        if (existingIds.has(id)) {
-          return state; // Already have this tool call
-        }
-
-        return {
-          currentBlock: state.currentBlock
-            ? {
-                ...state.currentBlock,
-                toolCalls: [...state.currentBlock.toolCalls, { id, name, args, status: 'pending' as const }]
-              }
-            : { thinking: '', text: '', toolCalls: [{ id, name, args, status: 'pending' as const }] },
-          streamStatus: 'acting',
-        };
-      }),
-
-      setToolResult: (toolCallId, status, result) => set((state) => ({
-        currentBlock: state.currentBlock
-          ? {
-              ...state.currentBlock,
-              toolCalls: state.currentBlock.toolCalls.map(tc =>
-                tc.id === toolCallId ? { ...tc, status, result } : tc
-              )
-            }
-          : null
-      })),
-
-      completeBlock: () => set({ currentBlock: null }),
-
-      // Conversation message actions
-      addUserMessage: (content) => set((state) => ({
-        conversationMessages: [
-          ...state.conversationMessages,
-          {
-            id: `user-${Date.now()}`,
-            type: 'user' as const,
-            content,
-            timestamp: Date.now(),
-          }
-        ]
-      })),
-
-      startAssistantMessage: () => set((state) => ({
-        conversationMessages: [
-          ...state.conversationMessages,
-          {
-            id: `assistant-${Date.now()}`,
-            type: 'assistant' as const,
-            content: '',
-            thinking: '',
-            toolCalls: [],
-            isStreaming: true,
-            timestamp: Date.now(),
-          }
-        ]
-      })),
-
-      updateCurrentAssistantThinking: (thinking) => set((state) => {
-        const messages = [...state.conversationMessages];
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage && lastMessage.type === 'assistant') {
-          messages[messages.length - 1] = { ...lastMessage, thinking };
-        }
-        return { conversationMessages: messages };
-      }),
-
-      updateCurrentAssistantToolCalls: (toolCalls) => set((state) => {
-        const messages = [...state.conversationMessages];
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage && lastMessage.type === 'assistant') {
-          messages[messages.length - 1] = { ...lastMessage, toolCalls };
-        }
-        return { conversationMessages: messages };
-      }),
-
-      completeAssistantMessage: (content) => set((state) => {
-        const messages = [...state.conversationMessages];
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage && lastMessage.type === 'assistant') {
-          messages[messages.length - 1] = {
-            ...lastMessage,
-            content: content || lastMessage.content,
-            // With extended thinking, thinking is always preserved
-            isStreaming: false,
-          };
-        }
-        return { conversationMessages: messages };
-      }),
-
-      clearConversation: () => set({ conversationMessages: [] }),
-
-      // Load conversation from server history format
-      loadConversationFromHistory: (history) => {
-        const messages: ConversationMessage[] = [];
-
-        for (const msg of history) {
-          if (msg.role === 'user') {
-            messages.push({
-              id: `user-${msg.timestamp}`,
-              type: 'user',
-              content: msg.content,
-              timestamp: msg.timestamp,
-            });
-          } else if (msg.role === 'assistant') {
-            // Convert server toolCalls to client ToolCallState format
-            const toolCalls: ToolCallState[] = (msg.toolCalls || []).map(tc => ({
-              id: tc.id,
-              name: tc.name,
-              args: tc.args || {},
-              status: tc.status || 'success',
-              result: tc.result,
-            }));
-
-            messages.push({
-              id: `assistant-${msg.timestamp}`,
-              type: 'assistant',
-              content: msg.content || '',
-              thinking: msg.thinking,
-              toolCalls,
-              isStreaming: false,
-              timestamp: msg.timestamp,
-            });
-          }
-          // Skip 'tool' messages - they're absorbed into assistant messages
-        }
-
-        set({ conversationMessages: messages });
-      },
-
-      // Agent-managed todos
-      setAgentTodos: (todos) => set({ agentTodos: todos }),
 
       // Page generation actions
       pageOpenModal: () => set({ pageStatus: 'modal' }),
@@ -478,19 +122,169 @@ export const useGenerationStore = create<GenerationStore>()(
       }),
     }),
     {
-      name: 'componentize-generation',
-      partialize: (state) => ({
-        // Only persist conversation-related state, not transient UI state
-        currentProjectId: state.currentProjectId,
-        streamingEvents: state.streamingEvents,
-        conversationMessages: state.conversationMessages,
-        generationMode: state.generationMode,
-        editingComponentName: state.editingComponentName,
-        currentComponentName: state.currentComponentName,
-        componentVersions: state.componentVersions,
-        isStreamPanelExpanded: state.isStreamPanelExpanded,
-        agentTodos: state.agentTodos,
-      }),
+      name: 'componentize-page-generation',
+      partialize: () => ({}), // Don't persist page generation state
     }
   )
+);
+
+// Legacy compatibility layer - combines all stores
+// This allows existing code to work without changes
+import { useConversationStore } from './conversationStore';
+import { useUIStore } from './uiStore';
+
+export const useGenerationStore = Object.assign(
+  // Main hook returns combined state
+  () => {
+    const conversation = useConversationStore();
+    const ui = useUIStore();
+    const page = usePageGenerationStore();
+
+    return {
+      // From conversation store
+      currentProjectId: conversation.currentProjectId,
+      setCurrentProjectId: (id: string | null) => {
+        conversation.setCurrentProjectId(id);
+      },
+      conversationMessages: conversation.conversationMessages,
+      addUserMessage: conversation.addUserMessage,
+      startAssistantMessage: conversation.startAssistantMessage,
+      updateCurrentAssistantThinking: conversation.updateCurrentAssistantThinking,
+      updateCurrentAssistantToolCalls: conversation.updateCurrentAssistantToolCalls,
+      completeAssistantMessage: conversation.completeAssistantMessage,
+      clearConversation: conversation.clearConversation,
+      loadConversationFromHistory: conversation.loadConversationFromHistory,
+      currentBlock: conversation.currentBlock,
+      startNewBlock: conversation.startNewBlock,
+      appendThinkingDelta: conversation.appendThinkingDelta,
+      appendTextDelta: conversation.appendTextDelta,
+      addToolCall: conversation.addToolCall,
+      setToolResult: conversation.setToolResult,
+      completeBlock: conversation.completeBlock,
+      agentTodos: conversation.agentTodos,
+      setAgentTodos: conversation.setAgentTodos,
+
+      // From UI store
+      isGenerating: ui.isGenerating,
+      setIsGenerating: ui.setIsGenerating,
+      streamStatus: ui.streamStatus,
+      setStreamStatus: ui.setStreamStatus,
+      isStreamPanelExpanded: ui.isStreamPanelExpanded,
+      setStreamPanelExpanded: ui.setStreamPanelExpanded,
+      currentComponentName: ui.currentComponentName,
+      setCurrentComponentName: ui.setCurrentComponentName,
+      generationMode: ui.generationMode,
+      setGenerationMode: ui.setGenerationMode,
+      editingComponentName: ui.editingComponentName,
+      setEditingComponentName: ui.setEditingComponentName,
+      pendingFixError: ui.pendingFixError,
+      setPendingFixError: ui.setPendingFixError,
+      componentVersions: ui.componentVersions,
+      incrementComponentVersion: ui.incrementComponentVersion,
+      startEditing: ui.startEditing,
+      startFixing: ui.startFixing,
+
+      // From page generation store
+      pageStatus: page.pageStatus,
+      pagePlan: page.pagePlan,
+      pageCurrentComponentIndex: page.pageCurrentComponentIndex,
+      pageTotalComponents: page.pageTotalComponents,
+      pageCompletedComponents: page.pageCompletedComponents,
+      pageFailedComponents: page.pageFailedComponents,
+      pageCanvasComponents: page.pageCanvasComponents,
+      pageEvents: page.pageEvents,
+      pageCurrentThinking: page.pageCurrentThinking,
+      pageOpenModal: page.pageOpenModal,
+      pageCloseModal: page.pageCloseModal,
+      pageStartGeneration: page.pageStartGeneration,
+      pageSetPlan: page.pageSetPlan,
+      pageSetCurrentComponent: page.pageSetCurrentComponent,
+      pageAddThinking: page.pageAddThinking,
+      pageMarkComponentComplete: page.pageMarkComponentComplete,
+      pageMarkComponentFailed: page.pageMarkComponentFailed,
+      pageAddEvent: page.pageAddEvent,
+      pageComplete: page.pageComplete,
+      pageSetError: page.pageSetError,
+      pageReset: page.pageReset,
+
+      // Deprecated - no longer needed with new stores
+      streamingEvents: [] as StreamEvent[],
+      addStreamingEvent: () => {},
+      setStreamingEvents: () => {},
+      clearStreamingEvents: () => {},
+    };
+  },
+  {
+    // Static methods for direct access
+    getState: () => {
+      const conversation = useConversationStore.getState();
+      const ui = useUIStore.getState();
+      const page = usePageGenerationStore.getState();
+
+      return {
+        currentProjectId: conversation.currentProjectId,
+        setCurrentProjectId: conversation.setCurrentProjectId,
+        conversationMessages: conversation.conversationMessages,
+        addUserMessage: conversation.addUserMessage,
+        startAssistantMessage: conversation.startAssistantMessage,
+        updateCurrentAssistantThinking: conversation.updateCurrentAssistantThinking,
+        updateCurrentAssistantToolCalls: conversation.updateCurrentAssistantToolCalls,
+        completeAssistantMessage: conversation.completeAssistantMessage,
+        clearConversation: conversation.clearConversation,
+        loadConversationFromHistory: conversation.loadConversationFromHistory,
+        currentBlock: conversation.currentBlock,
+        startNewBlock: conversation.startNewBlock,
+        appendThinkingDelta: conversation.appendThinkingDelta,
+        appendTextDelta: conversation.appendTextDelta,
+        addToolCall: conversation.addToolCall,
+        setToolResult: conversation.setToolResult,
+        completeBlock: conversation.completeBlock,
+        agentTodos: conversation.agentTodos,
+        setAgentTodos: conversation.setAgentTodos,
+        isGenerating: ui.isGenerating,
+        setIsGenerating: ui.setIsGenerating,
+        streamStatus: ui.streamStatus,
+        setStreamStatus: ui.setStreamStatus,
+        isStreamPanelExpanded: ui.isStreamPanelExpanded,
+        setStreamPanelExpanded: ui.setStreamPanelExpanded,
+        currentComponentName: ui.currentComponentName,
+        setCurrentComponentName: ui.setCurrentComponentName,
+        generationMode: ui.generationMode,
+        setGenerationMode: ui.setGenerationMode,
+        editingComponentName: ui.editingComponentName,
+        setEditingComponentName: ui.setEditingComponentName,
+        pendingFixError: ui.pendingFixError,
+        setPendingFixError: ui.setPendingFixError,
+        componentVersions: ui.componentVersions,
+        incrementComponentVersion: ui.incrementComponentVersion,
+        startEditing: ui.startEditing,
+        startFixing: ui.startFixing,
+        pageStatus: page.pageStatus,
+        pagePlan: page.pagePlan,
+        pageCurrentComponentIndex: page.pageCurrentComponentIndex,
+        pageTotalComponents: page.pageTotalComponents,
+        pageCompletedComponents: page.pageCompletedComponents,
+        pageFailedComponents: page.pageFailedComponents,
+        pageCanvasComponents: page.pageCanvasComponents,
+        pageEvents: page.pageEvents,
+        pageCurrentThinking: page.pageCurrentThinking,
+        pageOpenModal: page.pageOpenModal,
+        pageCloseModal: page.pageCloseModal,
+        pageStartGeneration: page.pageStartGeneration,
+        pageSetPlan: page.pageSetPlan,
+        pageSetCurrentComponent: page.pageSetCurrentComponent,
+        pageAddThinking: page.pageAddThinking,
+        pageMarkComponentComplete: page.pageMarkComponentComplete,
+        pageMarkComponentFailed: page.pageMarkComponentFailed,
+        pageAddEvent: page.pageAddEvent,
+        pageComplete: page.pageComplete,
+        pageSetError: page.pageSetError,
+        pageReset: page.pageReset,
+        streamingEvents: [] as StreamEvent[],
+        addStreamingEvent: () => {},
+        setStreamingEvents: () => {},
+        clearStreamingEvents: () => {},
+      };
+    },
+  }
 );

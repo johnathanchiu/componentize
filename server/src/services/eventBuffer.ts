@@ -1,11 +1,11 @@
 /**
  * Event Buffer Service
  *
- * Buffers SSE events for each project, enabling:
- * - Event replay on page refresh
- * - Stream resumption with `since` parameter
- * - Proper event sequencing
+ * Push-based event buffer using EventEmitter pattern.
+ * No polling - subscribers receive events as they arrive.
  */
+
+import { EventEmitter } from 'events';
 
 interface ProjectEventBuffer {
   events: string[];        // Pre-serialized SSE strings
@@ -15,8 +15,12 @@ interface ProjectEventBuffer {
   createdAt: number;
 }
 
-// Global buffer store - in production could use Redis with TTL
+// Global buffer store
 const buffers = new Map<string, ProjectEventBuffer>();
+
+// Event emitter for push-based subscriptions
+const emitter = new EventEmitter();
+emitter.setMaxListeners(100); // Allow many concurrent subscribers
 
 // TTL for buffers (30 minutes)
 const BUFFER_TTL_MS = 30 * 60 * 1000;
@@ -29,6 +33,8 @@ function cleanupExpiredBuffers(): void {
   for (const [projectId, buffer] of buffers.entries()) {
     if (now - buffer.createdAt > BUFFER_TTL_MS) {
       buffers.delete(projectId);
+      emitter.removeAllListeners(`event:${projectId}`);
+      emitter.removeAllListeners(`complete:${projectId}`);
     }
   }
 }
@@ -68,11 +74,14 @@ export function isTaskRunning(projectId: string): boolean {
 
 /**
  * Append a pre-serialized SSE event to the buffer
+ * Pushes to all subscribers immediately
  */
 export function appendEvent(projectId: string, sseString: string): void {
   const buffer = buffers.get(projectId);
   if (buffer) {
     buffer.events.push(sseString);
+    // Push to subscribers
+    emitter.emit(`event:${projectId}`, sseString);
   }
 }
 
@@ -94,6 +103,8 @@ export function markComplete(projectId: string, error?: string): void {
   if (buffer) {
     buffer.isComplete = true;
     buffer.error = error || null;
+    // Notify subscribers that stream is complete
+    emitter.emit(`complete:${projectId}`);
   }
 }
 
@@ -102,6 +113,8 @@ export function markComplete(projectId: string, error?: string): void {
  */
 export function clearBuffer(projectId: string): void {
   buffers.delete(projectId);
+  emitter.removeAllListeners(`event:${projectId}`);
+  emitter.removeAllListeners(`complete:${projectId}`);
 }
 
 /**
@@ -135,64 +148,94 @@ export function getBufferStatus(projectId: string): {
 
 /**
  * Async generator for SSE streaming with replay support
+ * Push-based - no polling, events arrive immediately via EventEmitter
  *
  * @param projectId - The project to subscribe to
  * @param since - Skip first N events (for resumption)
- * @param timeout - Max seconds to wait for new events (default 5 minutes)
  */
 export async function* subscribe(
   projectId: string,
-  since: number = 0,
-  timeout: number = 300
+  since: number = 0
 ): AsyncGenerator<string> {
   const buffer = buffers.get(projectId);
   if (!buffer) return;
 
-  let lastIndex = since;
-  let idleIterations = 0;
-  const maxIdleIterations = timeout * 10; // 100ms poll interval
-  let keepaliveCounter = 0;
+  // Replay existing events first
+  for (let i = since; i < buffer.events.length; i++) {
+    yield buffer.events[i];
+  }
 
-  while (true) {
-    // Yield any new events
-    let hadEvents = false;
-    while (lastIndex < buffer.events.length) {
-      yield buffer.events[lastIndex];
-      lastIndex++;
-      keepaliveCounter = 0;
-      idleIterations = 0;
-      hadEvents = true;
+  // If already complete, we're done
+  if (buffer.isComplete) {
+    return;
+  }
+
+  // Track where we are in the buffer
+  let lastYielded = buffer.events.length;
+
+  // Create promise-based event listener
+  const eventQueue: string[] = [];
+  let resolveWait: (() => void) | null = null;
+  let isComplete = false;
+
+  const onEvent = (sseString: string) => {
+    eventQueue.push(sseString);
+    if (resolveWait) {
+      resolveWait();
+      resolveWait = null;
+    }
+  };
+
+  const onComplete = () => {
+    isComplete = true;
+    if (resolveWait) {
+      resolveWait();
+      resolveWait = null;
+    }
+  };
+
+  emitter.on(`event:${projectId}`, onEvent);
+  emitter.on(`complete:${projectId}`, onComplete);
+
+  try {
+    // Yield any events that arrived between replay and listener setup
+    while (lastYielded < buffer.events.length) {
+      yield buffer.events[lastYielded];
+      lastYielded++;
     }
 
-    // Check if complete
-    if (buffer.isComplete) {
-      return;
-    }
-
-    // Wait before next poll
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Track idle time
-    if (!hadEvents) {
-      idleIterations++;
-      if (idleIterations >= maxIdleIterations) {
-        // Timeout - stop streaming
-        return;
+    // Listen for new events
+    while (!isComplete) {
+      // Drain the queue
+      while (eventQueue.length > 0) {
+        const event = eventQueue.shift()!;
+        yield event;
       }
+
+      // If complete, exit
+      if (isComplete || buffer.isComplete) {
+        break;
+      }
+
+      // Wait for next event
+      await new Promise<void>(resolve => {
+        resolveWait = resolve;
+      });
     }
 
-    // Send keepalive every ~30 seconds
-    keepaliveCounter++;
-    if (keepaliveCounter >= 300) {
-      yield ': keepalive\n\n';
-      keepaliveCounter = 0;
+    // Drain any remaining events
+    while (eventQueue.length > 0) {
+      yield eventQueue.shift()!;
     }
+  } finally {
+    // Clean up listeners
+    emitter.off(`event:${projectId}`, onEvent);
+    emitter.off(`complete:${projectId}`, onComplete);
   }
 }
 
 /**
  * Helper to create an SSE-formatted string from a StreamEvent
- * The event is serialized directly, not wrapped in another object
  */
 export function makeSSE(event: unknown): string {
   return `data: ${JSON.stringify(event)}\n\n`;
@@ -207,7 +250,7 @@ export function getBufferEvents(projectId: string): unknown[] {
 
   return buffer.events.map(sseString => {
     // Parse "data: {...}\n\n" format
-    const jsonStr = sseString.slice(6, -2); // Remove "data: " prefix and "\n\n" suffix
+    const jsonStr = sseString.slice(6, -2);
     try {
       return JSON.parse(jsonStr);
     } catch {

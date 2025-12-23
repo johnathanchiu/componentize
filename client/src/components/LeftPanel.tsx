@@ -192,8 +192,7 @@ function CreateTab() {
           completeBlock();
           // Always pass the content, thinking is preserved in the assistant message
           completeAssistantMessage(content);
-          // Clear todos on successful completion
-          setAgentTodos([]);
+          // Note: Todos persist until agent clears them via manage_todos
           // Clear form after delay
           setTimeout(() => {
             setPrompt('');
@@ -218,7 +217,7 @@ function CreateTab() {
         // Legacy event handling (for backward compatibility)
         case 'success':
           completeAssistantMessage();
-          setAgentTodos([]);
+          // Note: Todos persist until agent clears them via manage_todos
           setTimeout(() => {
             setPrompt('');
             setTimeout(() => {
@@ -379,7 +378,7 @@ Call read_component to see the code, find the bug, and call update_component wit
                 Tasks: {agentTodos.filter(t => t.status === 'completed').length}/{agentTodos.length}
               </span>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 max-h-32 overflow-y-auto">
               {agentTodos.map(todo => (
                 <div
                   key={todo.id}
@@ -393,7 +392,7 @@ Call read_component to see the code, find the bug, and call update_component wit
                      todo.status === 'in_progress' ? '→' : '○'}
                   </span>
                   <span className={todo.status === 'completed' ? 'line-through' : ''}>
-                    {todo.content}
+                    {todo.status === 'in_progress' && todo.activeForm ? todo.activeForm : todo.content}
                   </span>
                 </div>
               ))}

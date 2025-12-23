@@ -1,62 +1,29 @@
-import { BaseAgent, type ToolResult } from '../base';
+import { BaseAgent } from '../base';
 import type { StreamEvent, AgentTodo } from '../../../../shared/types';
-import { DESIGN_TOOLS } from './tools';
+import { ToolRegistry, EditComponentTool, ReadComponentTool, ManageTodosTool } from '../tools';
 import { SYSTEM_PROMPT } from './prompt';
-import {
-  buildCanvasContext,
-  handleReadComponent,
-  handleEditComponent,
-  handleManageTodos,
-  type HandlerContext,
-} from './handlers';
+import { buildCanvasContext } from './handlers';
 import { projectService } from '../../services/projectService';
-import type {
-  EditComponentInput,
-  ManageTodosInput,
-  ReadComponentInput,
-} from './types';
 
 interface ConversationContext {
   lastTodos: AgentTodo[];
   previousUserMessages: string[];
 }
 
+/**
+ * Create the tool registry for the design agent
+ */
+function createDesignToolRegistry(): ToolRegistry {
+  return new ToolRegistry([
+    new EditComponentTool(),
+    new ReadComponentTool(),
+    new ManageTodosTool(),
+  ]);
+}
+
 export class DesignAgent extends BaseAgent {
-  private projectId: string | null = null;
-  private createdComponents: string[] = [];
-  private validationFailures: Map<string, number> = new Map();
-
   constructor() {
-    super(DESIGN_TOOLS, SYSTEM_PROMPT);
-  }
-
-  /**
-   * Set the project context for subsequent operations
-   */
-  setProjectContext(projectId: string): void {
-    this.projectId = projectId;
-    this.createdComponents = [];
-    this.validationFailures.clear();
-  }
-
-  /**
-   * Clear the project context
-   */
-  clearProjectContext(): void {
-    this.projectId = null;
-    this.createdComponents = [];
-    this.validationFailures.clear();
-  }
-
-  /**
-   * Get handler context for passing to tool handlers
-   */
-  private getHandlerContext(): HandlerContext {
-    return {
-      projectId: this.projectId!,
-      createdComponents: this.createdComponents,
-      validationFailures: this.validationFailures,
-    };
+    super(createDesignToolRegistry(), SYSTEM_PROMPT);
   }
 
   /**
@@ -113,36 +80,9 @@ export class DesignAgent extends BaseAgent {
     return parts.join('\n\n');
   }
 
-  protected async executeTool(toolName: string, toolInput: unknown): Promise<ToolResult> {
-    if (!this.projectId) {
-      return { status: 'error', message: 'No project context set' };
-    }
-
-    const context = this.getHandlerContext();
-
-    switch (toolName) {
-      case 'read_component': {
-        return handleReadComponent(toolInput as ReadComponentInput, this.projectId);
-      }
-
-      case 'edit_component': {
-        return handleEditComponent(toolInput as EditComponentInput, context);
-      }
-
-      case 'manage_todos': {
-        return handleManageTodos(toolInput as ManageTodosInput);
-      }
-
-      default:
-        return {
-          status: 'error',
-          message: `Unknown tool: ${toolName}`
-        };
-    }
-  }
-
   /**
    * Generate components based on user prompt
+   * Runs until Claude finishes naturally via end_turn
    */
   async *generate(prompt: string): AsyncGenerator<StreamEvent> {
     if (!this.projectId) {
@@ -171,24 +111,8 @@ Start now. Use edit_component to create or update components. For complex reques
       }
     ];
 
-    yield* this.runAgentLoop(messages, (result) => {
-      // Don't stop on read actions
-      if (result.action === 'read') {
-        return false;
-      }
-
-      // Don't stop on manage_todos - this is just for user visibility
-      if (result.todos) {
-        return false;
-      }
-
-      // Success when a component is created/updated
-      if (result.status === 'success' && result.component_name) {
-        return true;
-      }
-
-      return false;
-    });
+    // Run agent loop until Claude finishes (no early exit callback)
+    yield* this.runAgentLoop(messages);
   }
 }
 

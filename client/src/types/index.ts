@@ -20,6 +20,21 @@ export interface Size {
   height: number;
 }
 
+// Page artboard styling
+export type PageWidthPreset = 'desktop' | 'tablet' | 'mobile';
+
+export const PAGE_WIDTHS: Record<PageWidthPreset, number> = {
+  desktop: 1440,
+  tablet: 768,
+  mobile: 375,
+};
+
+export interface PageStyle {
+  width: number | PageWidthPreset;  // Page artboard width
+  background?: string;               // CSS background (color, gradient, image)
+  padding?: number;                  // Inner padding
+}
+
 export interface PageLayout {
   components: CanvasComponent[];
 }
@@ -90,6 +105,7 @@ export interface AgentTodo {
   id: string;
   content: string;
   status: 'pending' | 'in_progress' | 'completed';
+  activeForm: string; // Present tense form shown while in_progress (e.g., "Creating HeroHeadline")
 }
 
 export interface StreamEvent {

@@ -3,11 +3,17 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getWorkspacePath } from './workspace';
 
+export interface PageStyle {
+  width: number | 'desktop' | 'tablet' | 'mobile';
+  background?: string;
+}
+
 export interface Project {
   id: string;
   name: string;
   createdAt: string;
   updatedAt: string;
+  pageStyle?: PageStyle;
 }
 
 export interface CanvasComponent {
@@ -151,6 +157,23 @@ class ProjectService {
   async deleteProject(id: string): Promise<void> {
     const projectDir = this.getProjectDir(id);
     await fs.rm(projectDir, { recursive: true, force: true });
+  }
+
+  /**
+   * Update a project's metadata (partial update)
+   */
+  async updateProject(id: string, updates: Partial<Omit<Project, 'id' | 'createdAt'>>): Promise<Project | null> {
+    const project = await this.getProject(id);
+    if (!project) return null;
+
+    const updated: Project = {
+      ...project,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await fs.writeFile(this.getProjectMetadataPath(id), JSON.stringify(updated, null, 2));
+    return updated;
   }
 
   /**

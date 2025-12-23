@@ -154,12 +154,22 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
     overflow: 'hidden',
   };
 
-  // Use CSS outline for selection/hover - it renders OUTSIDE the element and is never clipped
-  const outlineStyle: React.CSSProperties = selected
-    ? { outline: '2px solid #3b82f6', outlineOffset: '2px' }
+  // Selection/hover styling with soft shadows for Figma-like feel
+  const selectionStyle: React.CSSProperties = selected
+    ? {
+        outline: '2px solid #3b82f6',
+        outlineOffset: '2px',
+        boxShadow: '0 4px 20px rgba(59, 130, 246, 0.25), 0 2px 8px rgba(0, 0, 0, 0.08)',
+      }
     : isHovered
-      ? { outline: '2px solid #737373', outlineOffset: '2px' }
-      : {};
+      ? {
+          outline: '1px solid #a3a3a3',
+          outlineOffset: '2px',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.08)',
+        }
+      : {
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+        };
 
   return (
     <div
@@ -169,10 +179,10 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Main container with outline-based selection/hover indicator */}
+      {/* Main container with selection/hover indicator and soft shadows */}
       <div
         className="relative rounded"
-        style={{ ...containerStyle, ...outlineStyle }}
+        style={{ ...containerStyle, ...selectionStyle }}
       >
         {/* Component content - fills container naturally via w-full h-full */}
         {loading && (

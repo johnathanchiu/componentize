@@ -1,11 +1,12 @@
 import { create } from 'zustand';
-import type { Component } from '../types/index';
+import type { Component, PageStyle } from '../types/index';
 
 export interface Project {
   id: string;
   name: string;
   createdAt: string;
   updatedAt: string;
+  pageStyle?: PageStyle;
 }
 
 interface ProjectStore {
@@ -28,6 +29,9 @@ interface ProjectStore {
   setAvailableComponents: (components: Component[]) => void;
   addAvailableComponent: (component: Component) => void;
   removeAvailableComponent: (componentName: string) => void;
+
+  // Page style actions
+  setPageStyle: (pageStyle: PageStyle) => void;
 }
 
 export const useProjectStore = create<ProjectStore>((set) => ({
@@ -66,5 +70,13 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   removeAvailableComponent: (componentName) =>
     set((state) => ({
       availableComponents: state.availableComponents.filter((c) => c.name !== componentName),
+    })),
+
+  // Page style actions
+  setPageStyle: (pageStyle) =>
+    set((state) => ({
+      currentProject: state.currentProject
+        ? { ...state.currentProject, pageStyle }
+        : null,
     })),
 }));
