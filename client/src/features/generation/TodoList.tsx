@@ -36,9 +36,7 @@ export function TodoList({ todos }: TodoListProps) {
                   : '○'}
             </span>
             <span className={todo.status === 'completed' ? 'line-through' : ''}>
-              {todo.status === 'in_progress' && todo.activeForm
-                ? todo.activeForm
-                : todo.content}
+              {todo.content}
             </span>
           </div>
         ))}

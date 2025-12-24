@@ -1,7 +1,7 @@
 // Feature re-exports for convenient imports
 
 // Canvas
-export { Canvas, useCanvas, useCanvasSelection, useCanvasActions, useCanvasStore } from './canvas';
+export { Canvas, useCanvasActions, useCanvasStore } from './canvas';
 
 // Generation
 export { PromptForm, ChatPanel, TodoList, useGeneration, useGenerationStatus, useGenerationStore } from './generation';

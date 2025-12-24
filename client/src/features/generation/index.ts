@@ -26,5 +26,5 @@ export {
   type ConversationMessage,
   type ServerConversationMessage,
   type ToolCallState,
-  type AssistantBlock,
+  type MessageBlock,
 } from './generationStore';

@@ -18,22 +18,26 @@ export interface ToolCallState {
   result?: unknown;
 }
 
-// Assistant block - accumulated from delta events
-export interface AssistantBlock {
-  thinking: string;
-  text: string;
-  toolCalls: ToolCallState[];
-}
+// Message block - ordered unit of content
+export type MessageBlock =
+  | { type: 'thinking'; content: string }
+  | { type: 'text'; content: string }
+  | { type: 'tool_call'; toolCall: ToolCallState };
 
 // Conversation message for chat display
 export interface ConversationMessage {
   id: string;
   type: 'user' | 'assistant';
-  content: string;
-  thinking?: string;
-  toolCalls?: ToolCallState[];
+  blocks: MessageBlock[];  // Ordered array preserves streaming order
   isStreaming?: boolean;
   timestamp: number;
+  content?: string;  // For user messages only
+}
+
+// Current block being accumulated during streaming
+interface StreamingBlock {
+  blocks: MessageBlock[];
+  currentBlockType: 'thinking' | 'text' | null;
 }
 
 // Server-side conversation message format
@@ -74,7 +78,7 @@ interface GenerationState {
 
   // Conversation
   conversationMessages: ConversationMessage[];
-  currentBlock: AssistantBlock | null;
+  currentBlock: StreamingBlock | null;
 
   // Agent todos
   agentTodos: AgentTodo[];
@@ -106,13 +110,11 @@ interface GenerationActions {
   // Conversation
   addUserMessage: (content: string) => void;
   startAssistantMessage: () => void;
-  updateCurrentAssistantThinking: (thinking: string) => void;
-  updateCurrentAssistantToolCalls: (toolCalls: ToolCallState[]) => void;
-  completeAssistantMessage: (content?: string) => void;
+  completeAssistantMessage: () => void;
   clearConversation: () => void;
   loadConversationFromHistory: (history: ServerConversationMessage[]) => void;
 
-  // Block accumulation
+  // Block accumulation - streams content into currentBlock, then merges on complete
   startNewBlock: () => void;
   appendThinkingDelta: (delta: string) => void;
   appendTextDelta: (delta: string) => void;
@@ -209,6 +211,7 @@ export const useGenerationStore = create<GenerationStore>()(
           {
             id: `user-${Date.now()}`,
             type: 'user' as const,
+            blocks: [],
             content,
             timestamp: Date.now(),
           }
@@ -221,44 +224,30 @@ export const useGenerationStore = create<GenerationStore>()(
           {
             id: `assistant-${Date.now()}`,
             type: 'assistant' as const,
-            content: '',
-            thinking: '',
-            toolCalls: [],
+            blocks: [],
             isStreaming: true,
             timestamp: Date.now(),
           }
         ]
       })),
 
-      updateCurrentAssistantThinking: (thinking) => set((state) => {
+      completeAssistantMessage: () => set((state) => {
         const messages = [...state.conversationMessages];
         const lastMessage = messages[messages.length - 1];
-        if (lastMessage && lastMessage.type === 'assistant') {
-          messages[messages.length - 1] = { ...lastMessage, thinking };
-        }
-        return { conversationMessages: messages };
-      }),
-
-      updateCurrentAssistantToolCalls: (toolCalls) => set((state) => {
-        const messages = [...state.conversationMessages];
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage && lastMessage.type === 'assistant') {
-          messages[messages.length - 1] = { ...lastMessage, toolCalls };
-        }
-        return { conversationMessages: messages };
-      }),
-
-      completeAssistantMessage: (content) => set((state) => {
-        const messages = [...state.conversationMessages];
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage && lastMessage.type === 'assistant') {
+        if (lastMessage && lastMessage.type === 'assistant' && state.currentBlock) {
+          // Merge accumulated blocks into the message
           messages[messages.length - 1] = {
             ...lastMessage,
-            content: content || lastMessage.content,
+            blocks: state.currentBlock.blocks,
+            isStreaming: false,
+          };
+        } else if (lastMessage && lastMessage.type === 'assistant') {
+          messages[messages.length - 1] = {
+            ...lastMessage,
             isStreaming: false,
           };
         }
-        return { conversationMessages: messages };
+        return { conversationMessages: messages, currentBlock: null };
       }),
 
       clearConversation: () => set({ conversationMessages: [] }),
@@ -271,24 +260,44 @@ export const useGenerationStore = create<GenerationStore>()(
             messages.push({
               id: `user-${msg.timestamp}`,
               type: 'user',
+              blocks: [],
               content: msg.content,
               timestamp: msg.timestamp,
             });
           } else if (msg.role === 'assistant') {
-            const toolCalls: ToolCallState[] = (msg.toolCalls || []).map(tc => ({
-              id: tc.id,
-              name: tc.name,
-              args: tc.args || {},
-              status: tc.status || 'success',
-              result: tc.result,
-            }));
+            // Convert old format to blocks
+            const blocks: MessageBlock[] = [];
+
+            // Add thinking block if present
+            if (msg.thinking) {
+              blocks.push({ type: 'thinking', content: msg.thinking });
+            }
+
+            // Add tool call blocks
+            if (msg.toolCalls) {
+              for (const tc of msg.toolCalls) {
+                blocks.push({
+                  type: 'tool_call',
+                  toolCall: {
+                    id: tc.id,
+                    name: tc.name,
+                    args: tc.args || {},
+                    status: tc.status || 'success',
+                    result: tc.result,
+                  }
+                });
+              }
+            }
+
+            // Add text block if present
+            if (msg.content) {
+              blocks.push({ type: 'text', content: msg.content });
+            }
 
             messages.push({
               id: `assistant-${msg.timestamp}`,
               type: 'assistant',
-              content: msg.content || '',
-              thinking: msg.thinking,
-              toolCalls,
+              blocks,
               isStreaming: false,
               timestamp: msg.timestamp,
             });
@@ -298,49 +307,94 @@ export const useGenerationStore = create<GenerationStore>()(
         set({ conversationMessages: messages });
       },
 
-      // Block accumulation
+      // Block accumulation - builds ordered blocks array during streaming
       startNewBlock: () => set({
-        currentBlock: { thinking: '', text: '', toolCalls: [] },
+        currentBlock: { blocks: [], currentBlockType: null },
       }),
 
-      appendThinkingDelta: (delta) => set((state) => ({
-        currentBlock: state.currentBlock
-          ? { ...state.currentBlock, thinking: state.currentBlock.thinking + delta }
-          : { thinking: delta, text: '', toolCalls: [] }
-      })),
+      appendThinkingDelta: (delta) => set((state) => {
+        if (!state.currentBlock) {
+          return { currentBlock: { blocks: [{ type: 'thinking', content: delta }], currentBlockType: 'thinking' } };
+        }
 
-      appendTextDelta: (delta) => set((state) => ({
-        currentBlock: state.currentBlock
-          ? { ...state.currentBlock, text: state.currentBlock.text + delta }
-          : { thinking: '', text: delta, toolCalls: [] }
-      })),
+        const blocks = [...state.currentBlock.blocks];
+
+        // If we were doing text and now thinking, start new thinking block
+        if (state.currentBlock.currentBlockType !== 'thinking') {
+          blocks.push({ type: 'thinking', content: delta });
+          return { currentBlock: { blocks, currentBlockType: 'thinking' } };
+        }
+
+        // Append to current thinking block
+        const lastBlock = blocks[blocks.length - 1];
+        if (lastBlock?.type === 'thinking') {
+          blocks[blocks.length - 1] = { type: 'thinking', content: lastBlock.content + delta };
+        } else {
+          blocks.push({ type: 'thinking', content: delta });
+        }
+        return { currentBlock: { blocks, currentBlockType: 'thinking' } };
+      }),
+
+      appendTextDelta: (delta) => set((state) => {
+        if (!state.currentBlock) {
+          return { currentBlock: { blocks: [{ type: 'text', content: delta }], currentBlockType: 'text' } };
+        }
+
+        const blocks = [...state.currentBlock.blocks];
+
+        // If we were doing thinking and now text, start new text block
+        if (state.currentBlock.currentBlockType !== 'text') {
+          blocks.push({ type: 'text', content: delta });
+          return { currentBlock: { blocks, currentBlockType: 'text' } };
+        }
+
+        // Append to current text block
+        const lastBlock = blocks[blocks.length - 1];
+        if (lastBlock?.type === 'text') {
+          blocks[blocks.length - 1] = { type: 'text', content: lastBlock.content + delta };
+        } else {
+          blocks.push({ type: 'text', content: delta });
+        }
+        return { currentBlock: { blocks, currentBlockType: 'text' } };
+      }),
 
       addToolCall: (id, name, args) => set((state) => {
-        const existingIds = new Set(state.currentBlock?.toolCalls.map(tc => tc.id) || []);
+        if (!state.currentBlock) {
+          return {
+            currentBlock: {
+              blocks: [{ type: 'tool_call', toolCall: { id, name, args, status: 'pending' as const } }],
+              currentBlockType: null,
+            }
+          };
+        }
+
+        // Check for duplicate
+        const existingIds = new Set(
+          state.currentBlock.blocks
+            .filter((b): b is { type: 'tool_call'; toolCall: ToolCallState } => b.type === 'tool_call')
+            .map(b => b.toolCall.id)
+        );
         if (existingIds.has(id)) {
           return state;
         }
 
-        return {
-          currentBlock: state.currentBlock
-            ? {
-                ...state.currentBlock,
-                toolCalls: [...state.currentBlock.toolCalls, { id, name, args, status: 'pending' as const }]
-              }
-            : { thinking: '', text: '', toolCalls: [{ id, name, args, status: 'pending' as const }] },
-        };
+        // Tool calls break the current text/thinking block
+        const blocks = [...state.currentBlock.blocks];
+        blocks.push({ type: 'tool_call', toolCall: { id, name, args, status: 'pending' as const } });
+        return { currentBlock: { blocks, currentBlockType: null } };
       }),
 
-      setToolResult: (toolCallId, status, result) => set((state) => ({
-        currentBlock: state.currentBlock
-          ? {
-              ...state.currentBlock,
-              toolCalls: state.currentBlock.toolCalls.map(tc =>
-                tc.id === toolCallId ? { ...tc, status, result } : tc
-              )
-            }
-          : null
-      })),
+      setToolResult: (toolCallId, status, result) => set((state) => {
+        if (!state.currentBlock) return state;
+
+        const blocks = state.currentBlock.blocks.map(block => {
+          if (block.type === 'tool_call' && block.toolCall.id === toolCallId) {
+            return { ...block, toolCall: { ...block.toolCall, status, result } };
+          }
+          return block;
+        });
+        return { currentBlock: { ...state.currentBlock, blocks } };
+      }),
 
       completeBlock: () => set({ currentBlock: null }),
 
@@ -401,8 +455,6 @@ export const useGenerationActions = () => useGenerationStore(
     setCurrentProjectId: s.setCurrentProjectId,
     addUserMessage: s.addUserMessage,
     startAssistantMessage: s.startAssistantMessage,
-    updateCurrentAssistantThinking: s.updateCurrentAssistantThinking,
-    updateCurrentAssistantToolCalls: s.updateCurrentAssistantToolCalls,
     completeAssistantMessage: s.completeAssistantMessage,
     clearConversation: s.clearConversation,
     loadConversationFromHistory: s.loadConversationFromHistory,

@@ -6,6 +6,7 @@ import {
   useCurrentBlock,
   useIsGenerating,
   type ConversationMessage,
+  type MessageBlock,
   type ToolCallState,
 } from './generationStore';
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from '../../components/ui/collapsible';
@@ -187,33 +188,48 @@ function ToolCallDisplay({ toolCall }: { toolCall: ToolCallState }) {
   );
 }
 
-// Assistant message with thoughts and tool calls
+// Render a single block
+function BlockDisplay({ block, isStreaming, isLastBlock }: { block: MessageBlock; isStreaming?: boolean; isLastBlock?: boolean }) {
+  const showCursor = isStreaming && isLastBlock;
+
+  switch (block.type) {
+    case 'thinking':
+      return <ThoughtDisplay content={block.content} isStreaming={showCursor} />;
+    case 'text':
+      return (
+        <div className="text-sm text-neutral-700 pt-1 prose prose-sm prose-neutral max-w-none">
+          <ReactMarkdown>{block.content}</ReactMarkdown>
+          {showCursor && (
+            <span className="inline-block w-1 h-3 bg-neutral-400 animate-pulse ml-0.5 align-text-bottom" />
+          )}
+        </div>
+      );
+    case 'tool_call':
+      return <ToolCallDisplay toolCall={block.toolCall} />;
+  }
+}
+
+// Assistant message - renders blocks in order
 function AssistantMessage({ message }: { message: ConversationMessage }) {
-  const { thinking, toolCalls, content, isStreaming } = message;
+  const { blocks, isStreaming } = message;
 
-  const hasThought = thinking && thinking.trim();
-  const hasToolCalls = toolCalls && toolCalls.length > 0;
-  const hasContent = content && content.trim();
+  const showThinkingIndicator = isStreaming && blocks.length === 0;
 
-  const showThinkingIndicator = isStreaming && !hasThought && !hasToolCalls && !hasContent;
-
-  if (!hasThought && !hasToolCalls && !hasContent && !showThinkingIndicator) {
+  if (blocks.length === 0 && !showThinkingIndicator) {
     return null;
   }
 
   return (
     <div className="py-2 border-b border-neutral-100">
       <div className="space-y-1.5">
-        {hasThought && <ThoughtDisplay content={thinking!} isStreaming={isStreaming} />}
-
-        {hasToolCalls &&
-          toolCalls!.map((tc) => <ToolCallDisplay key={tc.id} toolCall={tc} />)}
-
-        {hasContent && (
-          <div className="text-sm text-neutral-700 pt-1 prose prose-sm prose-neutral max-w-none">
-            <ReactMarkdown>{content}</ReactMarkdown>
-          </div>
-        )}
+        {blocks.map((block, idx) => (
+          <BlockDisplay
+            key={block.type === 'tool_call' ? block.toolCall.id : `${block.type}-${idx}`}
+            block={block}
+            isStreaming={isStreaming}
+            isLastBlock={idx === blocks.length - 1}
+          />
+        ))}
 
         {showThinkingIndicator && <ThinkingIndicator />}
       </div>
@@ -224,7 +240,6 @@ function AssistantMessage({ message }: { message: ConversationMessage }) {
 // Main chat panel component
 export function ChatPanel() {
   const containerRef = useRef<HTMLDivElement>(null);
-  // Use typed selector hooks for optimal re-rendering
   const conversationMessages = useConversationMessages();
   const currentBlock = useCurrentBlock();
   const isGenerating = useIsGenerating();
@@ -234,19 +249,17 @@ export function ChatPanel() {
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [conversationMessages, currentBlock?.thinking, currentBlock?.toolCalls]);
+  }, [conversationMessages, currentBlock?.blocks]);
 
   const lastMessage = conversationMessages[conversationMessages.length - 1];
   const isLastAssistantStreaming = lastMessage?.type === 'assistant' && lastMessage.isStreaming;
 
-  // Build display messages
+  // Build display messages - merge currentBlock into streaming message
   const displayMessages = conversationMessages.map((msg, idx) => {
     if (idx === conversationMessages.length - 1 && msg.type === 'assistant' && currentBlock) {
       return {
         ...msg,
-        thinking: currentBlock.thinking || msg.thinking,
-        content: currentBlock.text || msg.content,
-        toolCalls: currentBlock.toolCalls.length > 0 ? currentBlock.toolCalls : msg.toolCalls,
+        blocks: currentBlock.blocks.length > 0 ? currentBlock.blocks : msg.blocks,
       };
     }
     return msg;
@@ -264,7 +277,7 @@ export function ChatPanel() {
     <div ref={containerRef} className="h-full overflow-y-auto space-y-3 scrollbar-thin">
       {displayMessages.map((message) =>
         message.type === 'user' ? (
-          <UserMessage key={message.id} content={message.content} />
+          <UserMessage key={message.id} content={message.content!} />
         ) : (
           <AssistantMessage key={message.id} message={message} />
         )

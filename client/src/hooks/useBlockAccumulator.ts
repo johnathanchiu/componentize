@@ -33,8 +33,6 @@ export function useBlockAccumulator() {
     switch (event.type) {
       case 'thinking':
         genStore.appendThinkingDelta(event.content);
-        const currentThinking = useGenerationStore.getState().currentBlock?.thinking || '';
-        genStore.updateCurrentAssistantThinking(currentThinking);
         // Set status to thinking on first thinking event during resume
         if (isResume) {
           genStore.setStreamStatus('thinking');
@@ -68,10 +66,7 @@ export function useBlockAccumulator() {
         break;
 
       case 'complete': {
-        const block = useGenerationStore.getState().currentBlock;
-        const content = block?.text || event.content || '';
-        genStore.completeBlock();
-        genStore.completeAssistantMessage(content);
+        genStore.completeAssistantMessage();
         genStore.setStreamStatus('success');
         // Cleanup UI after delay
         setTimeout(() => {
@@ -83,7 +78,6 @@ export function useBlockAccumulator() {
       }
 
       case 'error':
-        genStore.completeBlock();
         genStore.completeAssistantMessage();
         genStore.setStreamStatus('error');
         break;

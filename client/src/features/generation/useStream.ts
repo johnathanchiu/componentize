@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useGenerationStore, useCurrentBlock, useGenerationActions } from './generationStore';
+import { useCurrentBlock, useGenerationActions } from './generationStore';
 import { useCanvasActions } from '../canvas/canvasStore';
 import { useProjectActions } from '../../store/projectStore';
 import type { StreamEvent } from '@/shared/types';
@@ -15,11 +15,9 @@ export function useStream() {
     appendTextDelta,
     addToolCall,
     setToolResult,
-    completeBlock,
     addUserMessage,
     startAssistantMessage,
     completeAssistantMessage,
-    updateCurrentAssistantThinking,
     setAgentTodos,
     setCurrentComponentName,
     incrementComponentVersion,
@@ -35,8 +33,6 @@ export function useStream() {
     switch (event.type) {
       case 'thinking':
         appendThinkingDelta(event.content);
-        const currentThinking = useGenerationStore.getState().currentBlock?.thinking || '';
-        updateCurrentAssistantThinking(currentThinking);
         break;
 
       case 'text':
@@ -63,10 +59,7 @@ export function useStream() {
         break;
 
       case 'complete': {
-        const block = useGenerationStore.getState().currentBlock;
-        const content = block?.text || event.content || '';
-        completeBlock();
-        completeAssistantMessage(content);
+        completeAssistantMessage();
         // Auto-collapse after success
         setTimeout(() => {
           setStreamPanelExpanded(false);
@@ -79,7 +72,6 @@ export function useStream() {
       }
 
       case 'error':
-        completeBlock();
         completeAssistantMessage();
         break;
     }
@@ -88,9 +80,7 @@ export function useStream() {
     appendTextDelta,
     addToolCall,
     setToolResult,
-    completeBlock,
     completeAssistantMessage,
-    updateCurrentAssistantThinking,
     setAgentTodos,
     setCurrentComponentName,
     incrementComponentVersion,
