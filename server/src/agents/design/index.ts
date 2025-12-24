@@ -1,14 +1,9 @@
+import Anthropic from '@anthropic-ai/sdk';
 import { BaseAgent } from '../base';
-import type { StreamEvent, AgentTodo } from '../../../../shared/types';
-import { ToolRegistry, EditComponentTool, ReadComponentTool, ManageTodosTool } from '../tools';
+import type { StreamEvent } from '../../../../shared/types';
+import { ToolRegistry, EditComponentTool, ReadComponentTool, ManageTodosTool, GetLayoutTool } from '../tools';
 import { SYSTEM_PROMPT } from './prompt';
-import { buildCanvasContext } from './handlers';
-import { projectService } from '../../services/projectService';
-
-interface ConversationContext {
-  lastTodos: AgentTodo[];
-  previousUserMessages: string[];
-}
+import { projectService, ConversationMessage } from '../../services/projectService';
 
 /**
  * Create the tool registry for the design agent
@@ -18,6 +13,7 @@ function createDesignToolRegistry(): ToolRegistry {
     new EditComponentTool(),
     new ReadComponentTool(),
     new ManageTodosTool(),
+    new GetLayoutTool(),
   ]);
 }
 
@@ -27,91 +23,84 @@ export class DesignAgent extends BaseAgent {
   }
 
   /**
-   * Extract conversation context from history
+   * Convert stored conversation history to Claude API message format
    */
-  private async getConversationContext(): Promise<ConversationContext> {
-    if (!this.projectId) {
-      return { lastTodos: [], previousUserMessages: [] };
-    }
+  private convertHistoryToMessages(history: ConversationMessage[]): Anthropic.MessageParam[] {
+    const messages: Anthropic.MessageParam[] = [];
 
-    const history = await projectService.getHistory(this.projectId);
+    for (const msg of history) {
+      if (msg.role === 'user') {
+        messages.push({ role: 'user', content: msg.content });
+      } else if (msg.role === 'assistant') {
+        // Reconstruct assistant message with proper content blocks
+        const content: Anthropic.ContentBlockParam[] = [];
 
-    const previousUserMessages = history
-      .filter(msg => msg.role === 'user')
-      .map(msg => msg.content);
+        if (msg.thinking) {
+          content.push({ type: 'thinking', thinking: msg.thinking, signature: '' });
+        }
+        if (msg.content) {
+          content.push({ type: 'text', text: msg.content });
+        }
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+          for (const tc of msg.toolCalls) {
+            content.push({
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.name,
+              input: tc.args || {},
+            });
+          }
+        }
 
-    let lastTodos: AgentTodo[] = [];
+        if (content.length > 0) {
+          messages.push({ role: 'assistant', content });
+        }
 
-    for (let i = history.length - 1; i >= 0; i--) {
-      const msg = history[i];
-      if (msg.role === 'assistant' && msg.toolCalls) {
-        for (const tc of msg.toolCalls) {
-          if (tc.name === 'manage_todos' && tc.result && !lastTodos.length) {
-            const result = tc.result as { todos?: AgentTodo[] };
-            if (result.todos) {
-              lastTodos = result.todos;
-            }
+        // Add tool results as user messages (required by Claude API)
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+          const toolResults: Anthropic.ToolResultBlockParam[] = msg.toolCalls
+            .filter(tc => tc.result !== undefined)
+            .map(tc => ({
+              type: 'tool_result' as const,
+              tool_use_id: tc.id,
+              content: JSON.stringify({
+                success: tc.status === 'success',
+                message: tc.result,
+              }),
+            }));
+
+          if (toolResults.length > 0) {
+            messages.push({ role: 'user', content: toolResults });
           }
         }
       }
-      if (lastTodos.length) break;
     }
 
-    return { lastTodos, previousUserMessages };
-  }
-
-  /**
-   * Build context string from previous conversation
-   */
-  private buildConversationContextString(context: ConversationContext): string {
-    const parts: string[] = [];
-
-    if (context.lastTodos.length > 0) {
-      const incomplete = context.lastTodos.filter(t => t.status !== 'completed');
-      if (incomplete.length > 0) {
-        const taskSummary = context.lastTodos.map(t => {
-          const status = t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '→' : '○';
-          return `${status} ${t.content}`;
-        }).join('\n  ');
-        parts.push(`PREVIOUS TASKS (continue from here):\n  ${taskSummary}`);
-      }
-    }
-
-    return parts.join('\n\n');
+    return messages;
   }
 
   /**
    * Generate components based on user prompt
-   * Runs until Claude finishes naturally via end_turn
+   * Passes full conversation history for proper multi-turn context
    */
   async *generate(prompt: string): AsyncGenerator<StreamEvent> {
     if (!this.projectId) {
-      yield { type: 'error', message: 'No project context set', timestamp: Date.now() };
+      yield { type: 'error', message: 'No project context set' };
       return;
     }
 
-    const canvasContext = await buildCanvasContext(this.projectId);
-    const conversationContext = await this.getConversationContext();
-    const conversationContextString = this.buildConversationContextString(conversationContext);
+    // Get full conversation history and convert to Claude format
+    const history = await projectService.getHistory(this.projectId);
+    const messages = this.convertHistoryToMessages(history);
 
-    let userContent = canvasContext;
+    // Append new user message
+    const userContent = `${prompt}
 
-    if (conversationContextString) {
-      userContent += `\n\n${conversationContextString}`;
-    }
+Use get_layout first if you need to see what's on the canvas. Use edit_component to create or update components. For complex requests with multiple components, use manage_todos to track your progress.`;
 
-    userContent += `\n\nUSER REQUEST: ${prompt}
+    messages.push({ role: 'user', content: userContent });
 
-Start now. Use edit_component to create or update components. For complex requests with multiple components, use manage_todos to track your progress.`;
-
-    const messages = [
-      {
-        role: 'user' as const,
-        content: userContent
-      }
-    ];
-
-    // Run agent loop until Claude finishes (no early exit callback)
+    // Run agent loop with full history
     yield* this.runAgentLoop(messages);
   }
 }

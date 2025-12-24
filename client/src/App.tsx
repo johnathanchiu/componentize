@@ -6,7 +6,6 @@ import { useGenerationActions } from './features/generation';
 import { ExportButton } from './components/ExportButton';
 import { CodePreviewPanel } from './components/CodePreviewPanel';
 import { ProjectsPage } from './components/projects/ProjectsPage';
-import { PageGenerationOverlay } from './components/page-generation';
 import { useCurrentProject, useProjectActions, type Project } from './store/projectStore';
 import { useBlockAccumulator } from './hooks/useBlockAccumulator';
 import { getProject } from './lib/api';
@@ -137,7 +136,6 @@ function App() {
         {/* Canvas area */}
         <div className="flex-1 min-w-0 relative">
           <Canvas />
-          <PageGenerationOverlay />
         </div>
 
         {/* Right panel - Code preview when editing */}

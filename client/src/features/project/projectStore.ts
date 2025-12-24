@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { Component, PageStyle } from '../../types/index';
+import type { Component } from '@/shared/types';
+import type { PageStyle } from '../../types/index';
 
 export interface Project {
   id: string;

@@ -1,4 +1,4 @@
-import type { PageLayout, StreamEvent } from '../types/index';
+import type { PageLayout, StreamEvent } from '@/shared/types';
 import type { Project } from '../store/projectStore';
 import type { ServerConversationMessage } from '../features/generation/generationStore';
 import { config } from '../config';

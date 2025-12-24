@@ -4,3 +4,4 @@ export { makeToolSchema } from './base';
 export { EditComponentTool } from './editComponent';
 export { ReadComponentTool } from './readComponent';
 export { ManageTodosTool } from './manageTodos';
+export { GetLayoutTool } from './getLayout';

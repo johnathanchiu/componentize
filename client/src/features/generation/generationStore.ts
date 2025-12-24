@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
-import type { StreamStatus, AgentTodo } from '../../types/index';
+import type { AgentTodo } from '@/shared/types';
+import type { StreamStatus } from '../../types/index';
 
 interface ErrorContext {
   message: string;

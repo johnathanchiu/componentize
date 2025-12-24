@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useGenerationStore, useCurrentBlock, useGenerationActions } from './generationStore';
 import { useCanvasActions } from '../canvas/canvasStore';
 import { useProjectActions } from '../../store/projectStore';
-import type { StreamEvent } from '../../types/index';
+import type { StreamEvent } from '@/shared/types';
 
 /**
  * Hook for processing stream events from the server.
@@ -11,7 +11,6 @@ import type { StreamEvent } from '../../types/index';
 export function useStream() {
   const currentBlock = useCurrentBlock();
   const {
-    startNewBlock,
     appendThinkingDelta,
     appendTextDelta,
     addToolCall,
@@ -34,71 +33,38 @@ export function useStream() {
 
   const processEvent = useCallback((event: StreamEvent, isCreateMode: boolean) => {
     switch (event.type) {
-      case 'turn_start':
-        startNewBlock();
+      case 'thinking':
+        appendThinkingDelta(event.content);
+        const currentThinking = useGenerationStore.getState().currentBlock?.thinking || '';
+        updateCurrentAssistantThinking(currentThinking);
         break;
 
-      case 'thinking_delta':
-        if (event.data?.content) {
-          appendThinkingDelta(event.data.content);
-          const currentThinking = useGenerationStore.getState().currentBlock?.thinking || '';
-          updateCurrentAssistantThinking(currentThinking);
-        }
-        break;
-
-      case 'text_delta':
-        if (event.data?.content) {
-          appendTextDelta(event.data.content);
-        }
+      case 'text':
+        appendTextDelta(event.content);
         break;
 
       case 'tool_call':
-        if (event.data?.toolUseId && event.data?.toolName) {
-          addToolCall(event.data.toolUseId, event.data.toolName, event.data.toolInput || {});
-        }
+        addToolCall(event.id, event.name, event.input || {});
         break;
 
       case 'tool_result':
-        if (event.data?.toolUseId) {
-          setToolResult(
-            event.data.toolUseId,
-            event.data.status || 'success',
-            event.data.result
-          );
-          // Handle embedded canvas update from tool result
-          if (event.data.canvasComponent) {
-            const comp = event.data.canvasComponent;
-            addAvailableComponent({ name: comp.componentName, filepath: '' });
-            addToCanvas(comp);
-            incrementComponentVersion(comp.componentName);
-            setCurrentComponentName(comp.componentName);
-          }
-          // Handle embedded todos update from tool result
-          if (event.data.todos) {
-            setAgentTodos(event.data.todos);
-          }
+        setToolResult(event.id, event.success ? 'success' : 'error', event.output);
+        // Handle embedded canvas update from tool result
+        if (event.canvas) {
+          addAvailableComponent({ name: event.canvas.componentName, filepath: '' });
+          addToCanvas(event.canvas);
+          incrementComponentVersion(event.canvas.componentName);
+          setCurrentComponentName(event.canvas.componentName);
         }
-        break;
-
-      case 'todo_update':
-        if (event.data?.todos) {
-          setAgentTodos(event.data.todos);
-        }
-        break;
-
-      case 'canvas_update':
-        if (event.data?.canvasComponent) {
-          const comp = event.data.canvasComponent;
-          addAvailableComponent({ name: comp.componentName, filepath: '' });
-          addToCanvas(comp);
-          incrementComponentVersion(comp.componentName);
-          setCurrentComponentName(comp.componentName);
+        // Handle embedded todos update from tool result
+        if (event.todos) {
+          setAgentTodos(event.todos);
         }
         break;
 
       case 'complete': {
         const block = useGenerationStore.getState().currentBlock;
-        const content = block?.text || (event.data?.content as string) || '';
+        const content = block?.text || event.content || '';
         completeBlock();
         completeAssistantMessage(content);
         // Auto-collapse after success
@@ -116,20 +82,8 @@ export function useStream() {
         completeBlock();
         completeAssistantMessage();
         break;
-
-      case 'success':
-        completeAssistantMessage();
-        setTimeout(() => {
-          setStreamPanelExpanded(false);
-          if (!isCreateMode) {
-            setGenerationMode('create');
-            setEditingComponentName(null);
-          }
-        }, 2000);
-        break;
     }
   }, [
-    startNewBlock,
     appendThinkingDelta,
     appendTextDelta,
     addToolCall,

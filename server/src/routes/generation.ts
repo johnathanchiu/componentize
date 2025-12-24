@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { designAgent } from '../agents';
-import { projectService, type StreamEvent } from '../services/projectService';
+import { projectService } from '../services/projectService';
+import type { StreamEvent } from '../../../shared/types';
 import {
   createBuffer,
   getBuffer,
@@ -66,21 +67,11 @@ export function registerGenerationRoutes(server: FastifyInstance) {
 
       // Add initial events to buffer
       // Persist user message to disk immediately (complete event, not buffered)
-      const timestamp = Date.now();
       await projectService.appendHistoryMessage(id, {
         role: 'user',
         content: prompt,
-        timestamp,
+        timestamp: Date.now(),
       });
-
-      // Add session_start to buffer (for stream subscribers)
-      const sessionStartEvent: StreamEvent = {
-        type: 'session_start',
-        message: 'Generating components',
-        timestamp,
-        data: { mode: 'create' },
-      };
-      appendEvent(id, makeSSE(sessionStartEvent));
 
       // Mark buffer as started
       markStarted(id);
@@ -101,23 +92,19 @@ export function registerGenerationRoutes(server: FastifyInstance) {
 
           // Persist assistant turn to history (user message already saved)
           const allEvents = getBufferEvents(id) as StreamEvent[];
-          // Filter out user_message since it's already on disk
-          const assistantEvents = allEvents.filter(e => e.type !== 'user_message');
-          await projectService.appendHistory(id, assistantEvents);
+          await projectService.appendHistory(id, allEvents);
 
         } catch (error) {
           const errorEvent: StreamEvent = {
             type: 'error',
             message: error instanceof Error ? error.message : 'Unknown error',
-            timestamp: Date.now(),
           };
           appendEvent(id, makeSSE(errorEvent));
           markComplete(id, errorEvent.message);
 
           // Persist assistant turn even on error (user message already saved)
           const allEvents = getBufferEvents(id) as StreamEvent[];
-          const assistantEvents = allEvents.filter(e => e.type !== 'user_message');
-          await projectService.appendHistory(id, assistantEvents);
+          await projectService.appendHistory(id, allEvents);
         } finally {
           designAgent.clearProjectContext();
         }

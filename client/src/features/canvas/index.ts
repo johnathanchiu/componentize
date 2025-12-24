@@ -1,7 +1,6 @@
 // Canvas feature exports
 export { Canvas } from './Canvas';
 export { ComponentNode, type ComponentNodeData } from './ComponentNode';
-export { useCanvas, useCanvasSelection } from './useCanvas';
 export { useCanvasKeyboard } from './useKeyboard';
 export {
   useCanvasStore,

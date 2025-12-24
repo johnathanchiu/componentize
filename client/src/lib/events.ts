@@ -1,5 +1,5 @@
 import mitt from 'mitt';
-import type { CanvasComponent } from '../types/index';
+import type { CanvasComponent } from '@/shared/types';
 
 /**
  * Event types for cross-feature communication.

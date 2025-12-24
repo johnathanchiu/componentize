@@ -10,7 +10,7 @@ import {
 import { compileComponent } from '../../lib/componentRenderer';
 import { ComponentErrorBoundary } from './ErrorBoundary';
 import { ErrorOverlay } from './ErrorOverlay';
-import type { Size } from '../../types/index';
+import type { Size } from '@/shared/types';
 
 // Default size for components that don't have an explicit size set
 const DEFAULT_SIZE: Size = { width: 300, height: 200 };

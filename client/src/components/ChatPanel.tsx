@@ -20,8 +20,12 @@ function getToolLabel(toolName: string, hasResult: boolean, hasError: boolean): 
       return hasResult ? 'Read component' : 'Reading component';
     case 'manage_todos':
       return hasResult ? 'Updated tasks' : 'Updating tasks';
-    default:
-      return toolName.replace(/_/g, ' ');
+    case 'get_layout':
+      return hasResult ? 'Checked layout' : 'Checking layout';
+    default: {
+      const label = toolName.replace(/_/g, ' ');
+      return label.charAt(0).toUpperCase() + label.slice(1);
+    }
   }
 }
 

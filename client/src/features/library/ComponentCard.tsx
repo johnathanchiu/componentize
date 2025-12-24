@@ -3,7 +3,7 @@ import React from 'react';
 import { Trash2, Wrench } from 'lucide-react';
 import { useGenerationStore } from '../generation/generationStore';
 import { loadComponent } from '../../lib/componentRenderer';
-import type { Size } from '../../types/index';
+import type { Size } from '@/shared/types';
 
 // Error boundary for component previews
 interface ErrorBoundaryProps {

@@ -3,23 +3,19 @@ import { appConfig } from '../config';
 import type { StreamEvent, CanvasComponent, AgentTodo } from '../../../shared/types';
 import type { ToolRegistry, ToolSchema, ToolResult } from './tools';
 
-/**
- * Block being accumulated during streaming
- */
-interface AccumulatorBlock {
-  type: 'thinking' | 'text' | 'tool_use';
-  content: string;
-  toolName?: string;
-  toolId?: string;
+interface ToolCall {
+  id: string;
+  name: string;
+  input: unknown;
+}
+
+interface StreamResult {
+  response: Anthropic.Message;
+  toolCalls: ToolCall[];
 }
 
 /**
- * Base Agent class with simplified streaming and ToolRegistry
- *
- * Streaming model:
- * - thinking_delta / text_delta → emit immediately (user sees Claude think)
- * - tool_use → accumulate silently until block completes, then execute and emit tool_result
- * - tool_result embeds canvas/todo updates (no separate event types)
+ * Base Agent class with clean streaming architecture
  */
 export abstract class BaseAgent {
   protected client: Anthropic;
@@ -53,309 +49,191 @@ When writing React components:
 - Export the component as default`;
   }
 
-  /**
-   * Set the project context for subsequent operations
-   */
   setProjectContext(projectId: string): void {
     this.projectId = projectId;
   }
 
-  /**
-   * Clear the project context
-   */
   clearProjectContext(): void {
     this.projectId = null;
   }
 
-  /**
-   * Get tool schemas for the Anthropic API
-   */
   protected getToolSchemas(): ToolSchema[] {
     return this.registry.getSchemas();
   }
 
   /**
-   * Simplified agent loop with block-indexed accumulator
-   *
-   * Events emitted:
-   * - thinking_delta: { content, blockIndex } - emit immediately
-   * - text_delta: { content, blockIndex } - emit immediately
-   * - tool_result: { blockIndex, name, result } - after tool executes (embeds canvas/todo)
-   * - complete: { status, message } - when done
-   * - error: { message } - on failure
+   * Main agent loop - clean and simple
    */
   protected async *runAgentLoop(
     messages: Anthropic.MessageParam[]
   ): AsyncGenerator<StreamEvent> {
-    let iteration = 0;
-
-    // Block accumulator - tracks content by block index
-    const blocks = new Map<number, AccumulatorBlock>();
-
-    while (iteration < appConfig.api.maxIterations) {
-      iteration++;
-
-      // Emit turn_start at the beginning of each agent turn
-      yield {
-        type: 'turn_start',
-        message: `Starting turn ${iteration}`,
-        timestamp: Date.now(),
-        data: { iteration }
-      };
-
+    for (let i = 0; i < appConfig.api.maxIterations; i++) {
       try {
-        const stream = this.client.messages.stream({
-          model: appConfig.api.modelName,
-          max_tokens: appConfig.api.maxTokens,
-          system: this.systemPrompt,
-          tools: this.getToolSchemas(),
-          tool_choice: { type: 'auto' },
-          messages,
-          thinking: {
-            type: 'enabled',
-            budget_tokens: 10000,
-          },
-        });
+        // Stream response, yield events, collect tool calls
+        const { response, toolCalls } = yield* this.streamResponse(messages);
 
-        // Track tool calls to execute after streaming
-        const pendingToolCalls: Array<{
-          index: number;
-          id: string;
-          name: string;
-          input: unknown;
-        }> = [];
+        // Execute tools and yield results
+        const toolResults = yield* this.executeTools(toolCalls);
 
-        // Process streaming events
-        for await (const event of stream) {
-          const timestamp = Date.now();
-
-          switch (event.type) {
-            case 'content_block_start': {
-              const index = event.index;
-              const block = event.content_block;
-
-              if (block.type === 'thinking') {
-                blocks.set(index, { type: 'thinking', content: '' });
-              } else if (block.type === 'text') {
-                blocks.set(index, { type: 'text', content: '' });
-              } else if (block.type === 'tool_use') {
-                blocks.set(index, {
-                  type: 'tool_use',
-                  content: '',
-                  toolName: block.name,
-                  toolId: block.id,
-                });
-              }
-              break;
-            }
-
-            case 'content_block_delta': {
-              const index = event.index;
-              const block = blocks.get(index);
-              if (!block) break;
-
-              if (event.delta.type === 'thinking_delta') {
-                const delta = (event.delta as { thinking: string }).thinking;
-                block.content += delta;
-
-                // Emit immediately - user sees thinking
-                yield {
-                  type: 'thinking_delta',
-                  message: delta,
-                  timestamp,
-                  data: { content: delta, blockIndex: index }
-                };
-              } else if (event.delta.type === 'text_delta') {
-                const delta = event.delta.text;
-                block.content += delta;
-
-                // Emit immediately - user sees response
-                yield {
-                  type: 'text_delta',
-                  message: delta,
-                  timestamp,
-                  data: { content: delta, blockIndex: index }
-                };
-              } else if (event.delta.type === 'input_json_delta') {
-                // Accumulate tool input silently - no streaming needed
-                block.content += event.delta.partial_json;
-              }
-              break;
-            }
-
-            case 'content_block_stop': {
-              const index = event.index;
-              const block = blocks.get(index);
-              if (!block) break;
-
-              // If tool_use block completed, queue for execution
-              if (block.type === 'tool_use' && block.toolId && block.toolName) {
-                try {
-                  const input = JSON.parse(block.content || '{}');
-                  pendingToolCalls.push({
-                    index,
-                    id: block.toolId,
-                    name: block.toolName,
-                    input,
-                  });
-                } catch {
-                  // JSON parse error - skip this tool call
-                  console.error('Failed to parse tool input:', block.content);
-                }
-              }
-              break;
-            }
-          }
-        }
-
-        // Get final message after streaming
-        const response = await stream.finalMessage();
-
-        // Execute all tool calls via registry and emit results
-        const toolResults: Array<{ id: string; result: ToolResult }> = [];
-
-        for (const toolCall of pendingToolCalls) {
-          // Emit tool_call event BEFORE execution
-          yield {
-            type: 'tool_call',
-            message: `Calling ${toolCall.name}`,
-            timestamp: Date.now(),
-            data: {
-              toolUseId: toolCall.id,
-              toolName: toolCall.name,
-              toolInput: toolCall.input as Record<string, unknown>,
-              blockIndex: toolCall.index,
-            }
-          };
-
-          if (!this.projectId) {
-            const errorResult: ToolResult = { success: false, error: 'No project context set' };
-            toolResults.push({ id: toolCall.id, result: errorResult });
-            continue;
-          }
-
-          const result = await this.registry.execute(
-            toolCall.name,
-            toolCall.input,
-            { projectId: this.projectId }
-          );
-          toolResults.push({ id: toolCall.id, result });
-
-          // Emit tool_result with embedded canvas/todo updates
-          yield {
-            type: 'tool_result',
-            message: result.output || result.error || '',
-            timestamp: Date.now(),
-            data: {
-              blockIndex: toolCall.index,
-              toolName: toolCall.name,
-              toolUseId: toolCall.id,
-              status: result.success ? 'success' : 'error',
-              result: {
-                status: result.success ? 'success' : 'error',
-                message: result.output || result.error || '',
-                ...result,
-              },
-              // Embed canvas update if present
-              canvasComponent: result.canvasUpdate as CanvasComponent | undefined,
-              // Embed todo update if present
-              todos: result.todosUpdate as AgentTodo[] | undefined,
-            }
-          };
-        }
-
-        // Handle response based on stop reason
-        if (response.stop_reason === 'tool_use') {
-          // Continue the loop - add assistant message and tool results
-          if (response.content && response.content.length > 0) {
-            messages.push({
-              role: 'assistant',
-              content: response.content,
-            });
-          }
-
-          // Add tool results as user message
-          const toolResultMessages: Anthropic.MessageParam[] = toolResults.map(tr => ({
-            role: 'user' as const,
-            content: [{
-              type: 'tool_result' as const,
-              tool_use_id: tr.id,
-              content: JSON.stringify({
-                status: tr.result.success ? 'success' : 'error',
-                message: tr.result.output || tr.result.error || '',
-              }),
-            }],
-          }));
-
-          messages.push(...toolResultMessages);
-
-          // Clear blocks for next iteration
-          blocks.clear();
-
-        } else if (response.stop_reason === 'end_turn') {
-          // Claude is done - natural completion
-          const finalText = response.content
-            .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-            .map(block => block.text)
-            .join('\n')
-            .trim();
-
-          yield {
-            type: 'complete',
-            message: finalText || 'Task completed',
-            timestamp: Date.now(),
-            data: {
-              status: 'success',
-              content: finalText,
-            }
-          };
+        // Handle based on stop reason
+        if (response.stop_reason === 'end_turn') {
+          yield { type: 'complete', content: this.extractText(response.content) || undefined };
           return;
+        }
 
-        } else if (response.stop_reason === 'max_tokens') {
-          // Response truncated - ask for simpler approach
+        if (response.stop_reason === 'tool_use') {
+          messages.push({ role: 'assistant', content: response.content });
+          messages.push(...this.buildToolResultMessages(toolResults));
+          continue;
+        }
+
+        if (response.stop_reason === 'max_tokens') {
           messages.push({
             role: 'user',
-            content: 'Your response was too long. Please try a simpler approach with smaller components.',
+            content: 'Your response was too long. Please try a simpler approach.',
           });
-          blocks.clear();
-
-        } else {
-          // Other stop reason - treat as completion
-          yield {
-            type: 'complete',
-            message: `Task ended: ${response.stop_reason}`,
-            timestamp: Date.now(),
-            data: { status: 'success' }
-          };
-          return;
+          continue;
         }
 
+        // Other stop reasons
+        yield { type: 'complete' };
+        return;
+
       } catch (error) {
-        yield {
-          type: 'error',
-          message: `API error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          timestamp: Date.now(),
-        };
+        yield { type: 'error', message: error instanceof Error ? error.message : 'Unknown error' };
         return;
       }
     }
 
-    // Max iterations reached
-    yield {
-      type: 'complete',
-      message: 'Max iterations reached',
-      timestamp: Date.now(),
-      data: { status: 'error', reason: 'max_iterations' }
-    };
+    yield { type: 'error', message: 'Max iterations reached' };
   }
 
   /**
-   * Helper to extract text from Claude response
+   * Stream response from Claude, yield events, collect tool calls
+   */
+  private async *streamResponse(
+    messages: Anthropic.MessageParam[]
+  ): AsyncGenerator<StreamEvent, StreamResult, undefined> {
+    const stream = this.client.messages.stream({
+      model: appConfig.api.modelName,
+      max_tokens: appConfig.api.maxTokens,
+      system: this.systemPrompt,
+      tools: this.getToolSchemas(),
+      tool_choice: { type: 'auto' },
+      messages,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 10000,
+      },
+    });
+
+    const toolCalls: ToolCall[] = [];
+    let currentTool: { id: string; name: string; input: string } | null = null;
+
+    for await (const event of stream) {
+      // Tool use start
+      if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
+        currentTool = { id: event.content_block.id, name: event.content_block.name, input: '' };
+      }
+
+      // Content deltas
+      if (event.type === 'content_block_delta') {
+        const delta = event.delta;
+        if (delta.type === 'thinking_delta') {
+          yield { type: 'thinking', content: (delta as { thinking: string }).thinking };
+        } else if (delta.type === 'text_delta') {
+          yield { type: 'text', content: delta.text };
+        } else if (delta.type === 'input_json_delta' && currentTool) {
+          currentTool.input += delta.partial_json;
+        }
+      }
+
+      // Tool use complete
+      if (event.type === 'content_block_stop' && currentTool) {
+        try {
+          const input = JSON.parse(currentTool.input || '{}');
+          toolCalls.push({ id: currentTool.id, name: currentTool.name, input });
+          yield { type: 'tool_call', id: currentTool.id, name: currentTool.name, input };
+        } catch {
+          console.error('Failed to parse tool input:', currentTool.input);
+        }
+        currentTool = null;
+      }
+    }
+
+    return { response: await stream.finalMessage(), toolCalls };
+  }
+
+  /**
+   * Execute tool calls and yield results
+   */
+  private async *executeTools(
+    toolCalls: ToolCall[]
+  ): AsyncGenerator<StreamEvent, Array<{ id: string; result: ToolResult }>, undefined> {
+    const results: Array<{ id: string; result: ToolResult }> = [];
+
+    for (const toolCall of toolCalls) {
+      if (!this.projectId) {
+        const errorResult: ToolResult = { success: false, error: 'No project context set' };
+        results.push({ id: toolCall.id, result: errorResult });
+        yield {
+          type: 'tool_result',
+          id: toolCall.id,
+          name: toolCall.name,
+          success: false,
+          output: errorResult.error,
+        };
+        continue;
+      }
+
+      const result = await this.registry.execute(
+        toolCall.name,
+        toolCall.input,
+        { projectId: this.projectId }
+      );
+      results.push({ id: toolCall.id, result });
+
+      yield {
+        type: 'tool_result',
+        id: toolCall.id,
+        name: toolCall.name,
+        success: result.success,
+        output: result.output || result.error,
+        canvas: result.canvasUpdate as CanvasComponent | undefined,
+        todos: result.todosUpdate as AgentTodo[] | undefined,
+      };
+    }
+
+    return results;
+  }
+
+  /**
+   * Build tool result messages for Claude API
+   */
+  private buildToolResultMessages(
+    results: Array<{ id: string; result: ToolResult }>
+  ): Anthropic.MessageParam[] {
+    return results.map(({ id, result }) => ({
+      role: 'user' as const,
+      content: [{
+        type: 'tool_result' as const,
+        tool_use_id: id,
+        content: JSON.stringify({
+          success: result.success,
+          message: result.output || result.error || '',
+        }),
+      }],
+    }));
+  }
+
+  /**
+   * Extract text from Claude response content
    */
   protected extractText(content: Anthropic.ContentBlock[]): string {
     return content
       .filter((block): block is Anthropic.TextBlock => block.type === 'text')
       .map(block => block.text)
-      .join('\n');
+      .join('\n')
+      .trim();
   }
 }

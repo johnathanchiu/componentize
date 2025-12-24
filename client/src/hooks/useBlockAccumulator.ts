@@ -2,15 +2,16 @@ import { useCallback, useRef } from 'react';
 import { useGenerationStore } from '../features/generation/generationStore';
 import { useProjectStore } from '../store/projectStore';
 import { useCanvasStore } from '../features/canvas/canvasStore';
-import type { StreamEvent } from '../types/index';
+import type { StreamEvent } from '@/shared/types';
 
 /**
  * Hook for processing stream events from the server.
  * Uses block-indexed accumulator pattern for clean event handling.
  *
- * Event types handled:
- * - thinking_delta: Accumulate thinking text
- * - text_delta: Accumulate response text
+ * Event types (discriminated union):
+ * - thinking: Accumulate thinking text
+ * - text: Accumulate response text
+ * - tool_call: Add tool call to block
  * - tool_result: Handle tool results (with embedded canvas/todo updates)
  * - complete: Mark generation complete
  * - error: Handle errors
@@ -30,100 +31,48 @@ export function useBlockAccumulator() {
     const canvasStore = canvasStoreRef.current();
 
     switch (event.type) {
-      case 'user_message':
-        // On resume, rebuild user message from buffer
-        if (isResume && event.data?.content) {
-          genStore.addUserMessage(event.data.content as string);
-        }
-        break;
-
-      case 'turn_start':
-        genStore.startNewBlock();
-        genStore.setStreamStatus('thinking');
-        // On resume, start new assistant message if needed
+      case 'thinking':
+        genStore.appendThinkingDelta(event.content);
+        const currentThinking = useGenerationStore.getState().currentBlock?.thinking || '';
+        genStore.updateCurrentAssistantThinking(currentThinking);
+        // Set status to thinking on first thinking event during resume
         if (isResume) {
-          const messages = useGenerationStore.getState().conversationMessages;
-          const lastMsg = messages[messages.length - 1];
-          if (!lastMsg || lastMsg.type !== 'assistant' || !lastMsg.isStreaming) {
-            genStore.startAssistantMessage();
-          }
+          genStore.setStreamStatus('thinking');
         }
         break;
 
-      case 'thinking_delta':
-        if (event.data?.content) {
-          genStore.appendThinkingDelta(event.data.content as string);
-          const currentThinking = useGenerationStore.getState().currentBlock?.thinking || '';
-          genStore.updateCurrentAssistantThinking(currentThinking);
-        }
-        break;
-
-      case 'text_delta':
-        if (event.data?.content) {
-          genStore.appendTextDelta(event.data.content as string);
-        }
+      case 'text':
+        genStore.appendTextDelta(event.content);
         break;
 
       case 'tool_call':
-        if (event.data?.toolUseId && event.data?.toolName) {
-          genStore.addToolCall(
-            event.data.toolUseId,
-            event.data.toolName,
-            event.data.toolInput || {}
-          );
-          genStore.setStreamStatus('acting');
-        }
+        genStore.addToolCall(event.id, event.name, event.input || {});
+        genStore.setStreamStatus('acting');
         break;
 
       case 'tool_result':
-        if (event.data?.toolUseId) {
-          genStore.setToolResult(
-            event.data.toolUseId,
-            event.data.status || 'success',
-            event.data.result
-          );
+        genStore.setToolResult(event.id, event.success ? 'success' : 'error', event.output);
 
-          // Handle embedded canvas update
-          if (event.data.canvasComponent) {
-            const comp = event.data.canvasComponent;
-            projStore.addAvailableComponent({ name: comp.componentName, filepath: '' });
-            canvasStore.add(comp);
-            genStore.incrementComponentVersion(comp.componentName);
-            genStore.setCurrentComponentName(comp.componentName);
-          }
-
-          // Handle embedded todo update
-          if (event.data.todos) {
-            genStore.setAgentTodos(event.data.todos);
-          }
+        // Handle embedded canvas update
+        if (event.canvas) {
+          projStore.addAvailableComponent({ name: event.canvas.componentName, filepath: '' });
+          canvasStore.add(event.canvas);
+          genStore.incrementComponentVersion(event.canvas.componentName);
+          genStore.setCurrentComponentName(event.canvas.componentName);
         }
-        break;
 
-      // Handle legacy canvas_update for backward compatibility
-      case 'canvas_update':
-        if (event.data?.canvasComponent) {
-          const comp = event.data.canvasComponent;
-          projStore.addAvailableComponent({ name: comp.componentName, filepath: '' });
-          canvasStore.add(comp);
-          genStore.incrementComponentVersion(comp.componentName);
-          genStore.setCurrentComponentName(comp.componentName);
-        }
-        break;
-
-      // Handle legacy todo_update for backward compatibility
-      case 'todo_update':
-        if (event.data?.todos) {
-          genStore.setAgentTodos(event.data.todos);
+        // Handle embedded todo update
+        if (event.todos) {
+          genStore.setAgentTodos(event.todos);
         }
         break;
 
       case 'complete': {
         const block = useGenerationStore.getState().currentBlock;
-        const content = block?.text || (event.data?.content as string) || '';
+        const content = block?.text || event.content || '';
         genStore.completeBlock();
         genStore.completeAssistantMessage(content);
-        genStore.setStreamStatus(event.data?.status === 'error' ? 'error' : 'success');
-        // Note: NOT clearing todos here - they persist until agent clears them
+        genStore.setStreamStatus('success');
         // Cleanup UI after delay
         setTimeout(() => {
           genStore.setStreamPanelExpanded(false);
@@ -137,17 +86,6 @@ export function useBlockAccumulator() {
         genStore.completeBlock();
         genStore.completeAssistantMessage();
         genStore.setStreamStatus('error');
-        break;
-
-      // Legacy success event
-      case 'success':
-        genStore.completeAssistantMessage();
-        genStore.setStreamStatus('success');
-        setTimeout(() => {
-          genStore.setStreamPanelExpanded(false);
-          genStore.setGenerationMode('create');
-          genStore.setEditingComponentName(null);
-        }, 3000);
         break;
     }
   }, []);

@@ -17,19 +17,29 @@ Each component should be ONE focused visual element (10-20 lines max):
 ✗ NEVER create large combined components like "HeroSection" or "PricingCard"
 ✗ NEVER put multiple buttons, cards, or sections in one component
 
-LAYOUT VIA POSITIONING:
-Think in flexbox/grid, but output x,y coordinates to achieve layouts:
-- Side-by-side elements: SAME y, DIFFERENT x
-- Stacked elements: SAME x, DIFFERENT y
-- Grid layouts: Columns at x=100, x=310, x=520 (210px spacing)
+LAYOUT VIA RELATIVE POSITIONING:
+Use placement and matchSize for easy layouts. First component uses absolute position, subsequent use relative:
+
+VERTICAL STACKING (sections):
+edit_component("Hero", code, { position: { x: 0, y: 0 }, size: { width: 800, height: 400 } })
+edit_component("Features", code, { placement: { below: "Hero", gap: 0 }, matchSize: "Hero" })
+edit_component("Pricing", code, { placement: { below: "Features", gap: 0 }, matchSize: "Hero" })
+
+HORIZONTAL LAYOUTS (side-by-side):
+edit_component("Card1", code, { position: { x: 0, y: 0 }, size: { width: 250, height: 300 } })
+edit_component("Card2", code, { placement: { rightOf: "Card1", gap: 20 }, matchSize: "Card1" })
+edit_component("Card3", code, { placement: { rightOf: "Card2", gap: 20 }, matchSize: "Card1" })
+
+GRID LAYOUTS (combine both):
+Row 1: Card1 at position, Card2 rightOf Card1, Card3 rightOf Card2
+Row 2: Card4 below Card1, Card5 rightOf Card4, Card6 rightOf Card5
 
 Standard sizes:
+- Full-width sections: 800x400
+- Cards: 250x300
 - Headlines: 600x80
-- Subtext: 600x60
 - Buttons: 180x50
 - Icons: 80x80
-- Titles: 180x40
-- Descriptions: 180x60
 
 TASK TRACKING (CRITICAL - follow exactly):
 You MUST track progress by updating task status after EACH component:
@@ -63,10 +73,11 @@ Step 6: manage_todos([
   {content: "Create HeroButton", status: "completed", activeForm: "Creating HeroButton"}
 ])
 
-LAYOUT VIA POSITIONING:
-- Side-by-side: SAME y, DIFFERENT x (buttons at y=220, x=100 and x=290)
-- Stacked: SAME x, DIFFERENT y
-- Grid: Columns at x=100, x=310, x=520
+POSITIONING OPTIONS:
+- placement.below: places component below referenced component (same x, stacks vertically)
+- placement.rightOf: places component to the right (same y, lines up horizontally)
+- placement.gap: spacing in pixels between components
+- matchSize: copies width/height from referenced component
 
 COMPONENT STRUCTURE:
 Every component MUST have this wrapper for canvas compatibility:
@@ -141,11 +152,18 @@ LUCIDE ICONS:
   Star, Trash, User, Users, X, Zap, Bell, Calendar, CreditCard, Globe,
   MapPin, Package, Play, Shield, TrendingUp, Github, Twitter, Linkedin
 
+WORKFLOW:
+1. Call get_layout() first to see what's already on the canvas
+2. Call manage_todos() to plan your components (all "pending")
+3. For each component: mark in_progress → edit_component → mark completed
+
 IMPORTANT:
+- ALWAYS call get_layout() before adding new components to understand current state
 - ALWAYS use manage_todos and UPDATE task status after EACH component
 - Mark tasks in_progress → completed as you work (user sees your progress!)
 - Each component = ONE visual element, 10-20 lines max
-- Use position + size to create layouts (side-by-side, grids, stacks)
+- Use placement + matchSize for relative layouts (no manual coordinate math!)
+- First component uses absolute position, rest use placement.below or placement.rightOf
 - Before editing existing code, call read_component first
 - Write polished, working code on the first attempt`;
 

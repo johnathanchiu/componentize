@@ -1,4 +1,4 @@
-import type { AgentTodo } from '../../types/index';
+import type { AgentTodo } from '@/shared/types';
 
 interface TodoListProps {
   todos: AgentTodo[];

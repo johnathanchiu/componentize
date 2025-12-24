@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getWorkspacePath } from './workspace';
+import type { StreamEvent } from '../../../shared/types';
 
 export interface PageStyle {
   width: number | 'desktop' | 'tablet' | 'mobile';
@@ -21,14 +22,6 @@ export interface CanvasComponent {
   componentName: string;
   position: { x: number; y: number };
   size?: { width: number; height: number };
-}
-
-// Stream event for real-time streaming
-export interface StreamEvent {
-  type: string;
-  message: string;
-  timestamp: number;
-  data?: Record<string, unknown>;
 }
 
 // Accumulated conversation message (like minecraftlm format)
@@ -231,132 +224,73 @@ class ProjectService {
   }
 
   /**
-   * Convert raw stream events into accumulated conversation messages
-   * This creates the proper minecraftlm-style format for history persistence
+   * Convert stream events into accumulated conversation messages
    */
   convertEventsToMessages(events: StreamEvent[]): ConversationMessage[] {
     const messages: ConversationMessage[] = [];
     let currentAssistant: ConversationMessage | null = null;
     let accumulatedThinking = '';
+    let accumulatedText = '';
     const toolCalls: Map<string, NonNullable<ConversationMessage['toolCalls']>[number]> = new Map();
 
     for (const event of events) {
       switch (event.type) {
-        case 'user_message':
-          // Save any pending assistant message first
-          if (currentAssistant) {
-            currentAssistant.thinking = accumulatedThinking || undefined;
-            currentAssistant.toolCalls = Array.from(toolCalls.values());
-            if (currentAssistant.thinking || currentAssistant.toolCalls.length > 0 || currentAssistant.content) {
-              messages.push(currentAssistant);
-            }
+        case 'thinking':
+          if (!currentAssistant) {
+            currentAssistant = { role: 'assistant', content: '', timestamp: Date.now() };
           }
-          // Add user message
-          messages.push({
-            role: 'user',
-            content: event.data?.prompt as string || event.message,
-            timestamp: event.timestamp,
-          });
-          // Reset for next assistant turn
-          currentAssistant = null;
-          accumulatedThinking = '';
-          toolCalls.clear();
+          accumulatedThinking += event.content;
           break;
 
-        case 'turn_start':
-          // Start new assistant message if needed
+        case 'text':
           if (!currentAssistant) {
-            currentAssistant = {
-              role: 'assistant',
-              content: '',
-              timestamp: event.timestamp,
-            };
-          } else if (accumulatedThinking) {
-            // Add separator for new turn's thinking (after tool results)
-            accumulatedThinking += '\n\n';
+            currentAssistant = { role: 'assistant', content: '', timestamp: Date.now() };
           }
-          break;
-
-        case 'thinking_delta':
-          // Start assistant message if not already started
-          if (!currentAssistant) {
-            currentAssistant = {
-              role: 'assistant',
-              content: '',
-              timestamp: event.timestamp,
-            };
-          }
-          // Accumulate thinking text
-          accumulatedThinking += event.data?.content || event.message || '';
-          break;
-
-        case 'text_delta':
-          // Start assistant message if not already started
-          if (!currentAssistant) {
-            currentAssistant = {
-              role: 'assistant',
-              content: '',
-              timestamp: event.timestamp,
-            };
-          }
-          // Accumulate text content
-          currentAssistant.content = (currentAssistant.content || '') + (event.data?.content || event.message || '');
+          accumulatedText += event.content;
           break;
 
         case 'tool_call':
-          // Record tool call
-          if (event.data?.toolUseId) {
-            toolCalls.set(event.data.toolUseId as string, {
-              id: event.data.toolUseId as string,
-              name: event.data.toolName as string,
-              status: 'pending',
-            });
+          if (!currentAssistant) {
+            currentAssistant = { role: 'assistant', content: '', timestamp: Date.now() };
           }
+          toolCalls.set(event.id, {
+            id: event.id,
+            name: event.name,
+            args: event.input as Record<string, unknown>,
+            status: 'pending',
+          });
           break;
 
         case 'tool_result':
-          // Update tool call with result
-          if (event.data?.toolUseId) {
-            const tc = toolCalls.get(event.data.toolUseId as string);
-            if (tc) {
-              tc.status = event.data.status as 'success' | 'error';
-              tc.result = event.data.result;
-            }
+          const tc = toolCalls.get(event.id);
+          if (tc) {
+            tc.status = event.success ? 'success' : 'error';
+            tc.result = event.output;
           }
           break;
 
         case 'complete':
-        case 'success':
-          // Finalize assistant message
           if (currentAssistant) {
-            const hasToolCalls = toolCalls.size > 0;
-            // If there were no tool calls, the accumulated "thinking" is actually the content
-            // (Claude's text response). Only treat it as thinking if tools were used.
-            if (hasToolCalls) {
-              currentAssistant.content = (event.data?.content as string) || '';
-              currentAssistant.thinking = accumulatedThinking || undefined;
-            } else {
-              // No tools - the "thinking" deltas are actually the response content
-              currentAssistant.content = accumulatedThinking || (event.data?.content as string) || '';
-              currentAssistant.thinking = undefined;
-            }
+            currentAssistant.thinking = accumulatedThinking || undefined;
+            currentAssistant.content = accumulatedText || event.content || '';
             currentAssistant.toolCalls = Array.from(toolCalls.values());
             messages.push(currentAssistant);
             currentAssistant = null;
             accumulatedThinking = '';
+            accumulatedText = '';
             toolCalls.clear();
           }
           break;
 
         case 'error':
-          // Finalize with error
           if (currentAssistant) {
-            currentAssistant.content = `Error: ${event.message}`;
             currentAssistant.thinking = accumulatedThinking || undefined;
+            currentAssistant.content = `Error: ${event.message}`;
             currentAssistant.toolCalls = Array.from(toolCalls.values());
             messages.push(currentAssistant);
             currentAssistant = null;
             accumulatedThinking = '';
+            accumulatedText = '';
             toolCalls.clear();
           }
           break;
@@ -366,6 +300,7 @@ class ProjectService {
     // Handle any remaining assistant message
     if (currentAssistant) {
       currentAssistant.thinking = accumulatedThinking || undefined;
+      currentAssistant.content = accumulatedText;
       currentAssistant.toolCalls = Array.from(toolCalls.values());
       if (currentAssistant.thinking || currentAssistant.toolCalls.length > 0 || currentAssistant.content) {
         messages.push(currentAssistant);

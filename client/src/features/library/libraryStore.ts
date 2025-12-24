@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import type { Component } from '../../types/index';
+import type { Component } from '@/shared/types';
 
 interface LibraryState {
   // Available components in the current project

@@ -105,36 +105,6 @@ export interface ExportFile {
   content: string;
 }
 
-// Streaming Event Types
-export type StreamEventType =
-  // New delta-based events (minecraftlm pattern)
-  | 'turn_start'         // New agent turn starting
-  | 'thinking_delta'     // Incremental thinking text (Claude's internal reasoning)
-  | 'text_delta'         // Incremental response text (Claude's response to user)
-  | 'tool_call'          // Tool being called (with id, name, args)
-  | 'tool_result'        // Tool execution completed
-  | 'code_delta'         // Incremental code generation
-  | 'canvas_update'      // Component placed on canvas
-  | 'todo_update'        // Agent-managed TODO list update
-  | 'complete'           // Task finished (success or error)
-  | 'error'              // Error occurred
-  // Legacy events (kept for backward compatibility)
-  | 'progress'           // Generic status updates
-  | 'thinking'           // Claude's reasoning text (full chunks) - legacy
-  | 'tool_start'         // Tool call initiated - legacy (use tool_call)
-  | 'code_streaming'     // Partial code being generated - legacy
-  | 'code_complete'      // Full code generation finished - legacy
-  | 'success'            // Final success - legacy (use complete)
-  // Page generation specific events
-  | 'page_plan'          // AI's plan for what components to create
-  | 'component_start'    // Starting generation of a specific component
-  | 'component_complete' // Component finished (success or failure)
-  // Session events
-  | 'session_start'      // Session started
-  | 'user_message';      // User's message
-
-export type StreamStatus = 'idle' | 'thinking' | 'acting' | 'success' | 'error';
-
 // Agent-managed TODO item
 export interface AgentTodo {
   id: string;
@@ -142,72 +112,14 @@ export interface AgentTodo {
   status: 'pending' | 'in_progress' | 'completed';
 }
 
-// Layout hint for smart positioning
-export type LayoutHint =
-  | 'hero'
-  | 'header'
-  | 'sidebar'
-  | 'cards'
-  | 'content'
-  | 'cta'
-  | 'form'
-  | 'footer'
-  | 'table'
-  | 'stats';
-
-// Component plan from AI
-export interface ComponentPlan {
-  name: string;
-  description: string;
-  layoutHint?: LayoutHint;
-  position?: Position;
-  size?: Size;
-}
-
-// Page generation result
-export interface PageGenerationResult {
-  totalComponents: number;
-  successfulComponents: string[];
-  failedComponents: Array<{ name: string; error: string }>;
-  canvasComponents: CanvasComponent[];
-}
-
-export interface StreamEvent {
-  type: StreamEventType;
-  message: string;
-  timestamp: number;
-  data?: {
-    // Block tracking (new simplified model)
-    blockIndex?: number;        // Index of content block (for thinking/text/tool deltas)
-    content?: string;           // For thinking/text events - the text content
-
-    // Tool events
-    toolName?: string;          // For tool events
-    toolInput?: Record<string, unknown>;  // Tool parameters (sanitized)
-    toolUseId?: string;         // For correlating tool_start with tool_result
-    status?: 'success' | 'error';  // For tool_result and complete
-    result?: unknown;           // Tool result data
-
-    // Completion
-    reason?: string;            // For complete event - why task ended
-
-    // Canvas/Todo updates (embedded in tool_result)
-    canvasComponent?: CanvasComponent;   // Component added to canvas
-    todos?: AgentTodo[];                 // Updated todo list
-
-    // Legacy fields (kept for backward compatibility during migration)
-    iteration?: number;
-    maxIterations?: number;
-    partialCode?: string;
-    code?: string;
-    lineCount?: number;
-    plan?: ComponentPlan[];
-    componentIndex?: number;
-    totalComponents?: number;
-    componentName?: string;
-    pageResult?: PageGenerationResult;
-  };
-}
+// Streaming Events - Discriminated Union
+export type StreamEvent =
+  | { type: 'thinking'; content: string }
+  | { type: 'text'; content: string }
+  | { type: 'tool_call'; id: string; name: string; input: unknown }
+  | { type: 'tool_result'; id: string; name: string; success: boolean; output?: string; canvas?: CanvasComponent; todos?: AgentTodo[] }
+  | { type: 'complete'; content?: string }
+  | { type: 'error'; message: string }
 
 // Page Layout Types
 export interface PageLayout {
