@@ -8,9 +8,6 @@ export {
   useSelectedId,
   useConnections,
   useShowConnections,
-  useCanvasIsLoading,
-  useCanvasLoadError,
-  useCanvasProjectId,
   useCanvasActions,
   type CanvasStore,
 } from './canvasStore';

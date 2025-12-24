@@ -9,8 +9,5 @@ export { PromptForm, ChatPanel, TodoList, useGeneration, useGenerationStatus, us
 // Library
 export { LibraryPanel, ComponentCard, useLibrary, useLibraryStore } from './library';
 
-// Project
-export { useProject, useCurrentProject, useProjectStore, type Project } from './project';
-
 // Sidebar
 export { Sidebar } from './sidebar';

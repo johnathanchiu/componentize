@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useCurrentBlock, useGenerationActions } from './generationStore';
+import { useGenerationActions } from './generationStore';
 import { useCanvasActions } from '../canvas/canvasStore';
 import { useProjectActions } from '../../store/projectStore';
 import type { StreamEvent } from '@/shared/types';
@@ -9,7 +9,6 @@ import type { StreamEvent } from '@/shared/types';
  * Handles delta accumulation, tool results, and canvas updates.
  */
 export function useStream() {
-  const currentBlock = useCurrentBlock();
   const {
     appendThinkingDelta,
     appendTextDelta,
@@ -99,6 +98,5 @@ export function useStream() {
   return {
     processEvent,
     startStream,
-    currentBlock,
   };
 }

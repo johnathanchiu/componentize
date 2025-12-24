@@ -115,12 +115,10 @@ interface GenerationActions {
   loadConversationFromHistory: (history: ServerConversationMessage[]) => void;
 
   // Block accumulation - streams content into currentBlock, then merges on complete
-  startNewBlock: () => void;
   appendThinkingDelta: (delta: string) => void;
   appendTextDelta: (delta: string) => void;
   addToolCall: (id: string, name: string, args: unknown) => void;
   setToolResult: (toolCallId: string, status: 'success' | 'error', result: unknown) => void;
-  completeBlock: () => void;
 
   // Agent todos
   setAgentTodos: (todos: AgentTodo[]) => void;
@@ -308,10 +306,6 @@ export const useGenerationStore = create<GenerationStore>()(
       },
 
       // Block accumulation - builds ordered blocks array during streaming
-      startNewBlock: () => set({
-        currentBlock: { blocks: [], currentBlockType: null },
-      }),
-
       appendThinkingDelta: (delta) => set((state) => {
         if (!state.currentBlock) {
           return { currentBlock: { blocks: [{ type: 'thinking', content: delta }], currentBlockType: 'thinking' } };
@@ -396,8 +390,6 @@ export const useGenerationStore = create<GenerationStore>()(
         return { currentBlock: { ...state.currentBlock, blocks } };
       }),
 
-      completeBlock: () => set({ currentBlock: null }),
-
       // Agent todos
       setAgentTodos: (todos) => set({ agentTodos: todos }),
     }),
@@ -458,12 +450,10 @@ export const useGenerationActions = () => useGenerationStore(
     completeAssistantMessage: s.completeAssistantMessage,
     clearConversation: s.clearConversation,
     loadConversationFromHistory: s.loadConversationFromHistory,
-    startNewBlock: s.startNewBlock,
     appendThinkingDelta: s.appendThinkingDelta,
     appendTextDelta: s.appendTextDelta,
     addToolCall: s.addToolCall,
     setToolResult: s.setToolResult,
-    completeBlock: s.completeBlock,
     setAgentTodos: s.setAgentTodos,
   }))
 );

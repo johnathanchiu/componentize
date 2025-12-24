@@ -251,9 +251,6 @@ export const useCanvasComponents = () => useCanvasStore((s) => s.components);
 export const useSelectedId = () => useCanvasStore((s) => s.selectedId);
 export const useConnections = () => useCanvasStore((s) => s.connections);
 export const useShowConnections = () => useCanvasStore((s) => s.showConnections);
-export const useCanvasIsLoading = () => useCanvasStore((s) => s.isLoading);
-export const useCanvasLoadError = () => useCanvasStore((s) => s.loadError);
-export const useCanvasProjectId = () => useCanvasStore((s) => s.currentProjectId);
 
 // Actions (grouped - use useShallow to prevent infinite loops from object creation)
 export const useCanvasActions = () => useCanvasStore(
