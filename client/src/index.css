@@ -13,6 +13,19 @@
 @source inline("bg-gradient-to-{r,l,t,b,tr,tl,br,bl}");
 @source inline("bg-clip-text text-transparent");
 
+/* Safelist sizing classes that might not be detected from external paths */
+@source inline("w-{1,2,3,4,5,6,8,10,12,14,16,20,24,32,40,48,56,64,72,80,96}");
+@source inline("h-{1,2,3,4,5,6,8,10,12,14,16,20,24,32,40,48,56,64,72,80,96}");
+@source inline("w-full h-full w-auto h-auto");
+@source inline("p-{1,2,3,4,5,6,8,10,12,16,20,24} px-{1,2,3,4,5,6,8,10,12,16,20,24} py-{1,2,3,4,5,6,8,10,12,16,20,24}");
+@source inline("m-{1,2,3,4,5,6,8,10,12,16,20,24} mx-{1,2,3,4,5,6,8,10,12,16,20,24} my-{1,2,3,4,5,6,8,10,12,16,20,24}");
+@source inline("mb-{1,2,3,4,5,6,8,10,12,16,20,24} mt-{1,2,3,4,5,6,8,10,12,16,20,24}");
+@source inline("rounded rounded-{sm,md,lg,xl,2xl,3xl,full}");
+@source inline("flex flex-col flex-row items-{start,center,end,stretch} justify-{start,center,end,between,around,evenly}");
+@source inline("gap-{1,2,3,4,5,6,8,10,12,16,20,24}");
+@source inline("text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl}");
+@source inline("font-{normal,medium,semibold,bold}");
+
 /* shadcn/ui CSS variables */
 :root {
   --background: 0 0% 100%;
