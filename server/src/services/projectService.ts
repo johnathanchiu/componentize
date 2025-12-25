@@ -2,19 +2,13 @@ import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getWorkspacePath } from './workspace';
-import type { StreamEvent } from '../../../shared/types';
-
-export interface PageStyle {
-  width: number | 'desktop' | 'tablet' | 'mobile';
-  background?: string;
-}
+import type { StreamEvent, PageStyle, Section, Layer, LayoutState } from '../../../shared/types';
 
 export interface Project {
   id: string;
   name: string;
   createdAt: string;
   updatedAt: string;
-  pageStyle?: PageStyle;
 }
 
 export interface CanvasComponent {
@@ -22,7 +16,35 @@ export interface CanvasComponent {
   componentName: string;
   position: { x: number; y: number };
   size?: { width: number; height: number };
+  section?: string; // Section this component belongs to
 }
+
+// Default page style
+const DEFAULT_PAGE_STYLE: PageStyle = {
+  width: 1200,
+  background: '#ffffff',
+};
+
+// Default layout state
+const DEFAULT_LAYOUT_STATE: LayoutState = {
+  pageStyle: DEFAULT_PAGE_STYLE,
+  sections: [],
+  layers: [],
+};
+
+// Predefined section order for proper page layout (top to bottom)
+const SECTION_ORDER = [
+  'nav', 'navbar', 'header',
+  'hero',
+  'features', 'benefits',
+  'stats', 'metrics',
+  'testimonials', 'reviews',
+  'pricing',
+  'cta', 'call-to-action',
+  'faq',
+  'contact',
+  'footer'
+];
 
 // Accumulated conversation message (like minecraftlm format)
 export interface ConversationMessage {
@@ -76,6 +98,13 @@ class ProjectService {
    */
   private getHistoryPath(projectId: string): string {
     return path.join(this.getProjectDir(projectId), 'history.json');
+  }
+
+  /**
+   * Get the path to a project's layout state file
+   */
+  private getLayoutPath(projectId: string): string {
+    return path.join(this.getProjectDir(projectId), 'layout.json');
   }
 
   /**
@@ -194,6 +223,239 @@ class ProjectService {
   async saveCanvas(projectId: string, components: CanvasComponent[]): Promise<void> {
     const canvasPath = this.getCanvasPath(projectId);
     await fs.writeFile(canvasPath, JSON.stringify(components, null, 2));
+  }
+
+  /**
+   * Get the layout state for a project
+   */
+  async getLayout(projectId: string): Promise<LayoutState> {
+    try {
+      const layoutPath = this.getLayoutPath(projectId);
+      const content = await fs.readFile(layoutPath, 'utf-8');
+      return JSON.parse(content) as LayoutState;
+    } catch {
+      return { ...DEFAULT_LAYOUT_STATE };
+    }
+  }
+
+  /**
+   * Save the layout state for a project
+   */
+  async saveLayout(projectId: string, layout: LayoutState): Promise<void> {
+    const layoutPath = this.getLayoutPath(projectId);
+    await fs.writeFile(layoutPath, JSON.stringify(layout, null, 2));
+  }
+
+  /**
+   * Update page style
+   */
+  async updatePageStyle(projectId: string, pageStyle: Partial<PageStyle>): Promise<LayoutState> {
+    const layout = await this.getLayout(projectId);
+    layout.pageStyle = { ...layout.pageStyle, ...pageStyle };
+    await this.saveLayout(projectId, layout);
+    return layout;
+  }
+
+  /**
+   * Add or update a section
+   */
+  async upsertSection(projectId: string, section: Section): Promise<LayoutState> {
+    const layout = await this.getLayout(projectId);
+    const existingIndex = layout.sections.findIndex(s => s.name === section.name);
+    if (existingIndex >= 0) {
+      layout.sections[existingIndex] = section;
+    } else {
+      layout.sections.push(section);
+    }
+    await this.saveLayout(projectId, layout);
+    return layout;
+  }
+
+  /**
+   * Add component to a section
+   */
+  async addComponentToSection(
+    projectId: string,
+    sectionName: string,
+    componentName: string,
+    size: { width: number; height: number },
+    gap?: number,
+    sectionLayout: 'row' | 'column' = 'column'
+  ): Promise<{ layout: LayoutState; position: { x: number; y: number } }> {
+    const layout = await this.getLayout(projectId);
+
+    // Find or create section
+    let section = layout.sections.find(s => s.name === sectionName);
+    if (!section) {
+      section = { name: sectionName, layout: sectionLayout, components: [] };
+
+      // Insert section at correct position based on SECTION_ORDER
+      const newSectionOrder = this.getSectionOrderIndex(sectionName);
+      const insertIndex = layout.sections.findIndex(s => {
+        const existingOrder = this.getSectionOrderIndex(s.name);
+        return existingOrder > newSectionOrder;
+      });
+
+      if (insertIndex === -1) {
+        // No section with higher order found, add at end
+        layout.sections.push(section);
+      } else {
+        // Insert before the first section with higher order
+        layout.sections.splice(insertIndex, 0, section);
+      }
+    }
+
+    // Check if component already exists in this section
+    const existingIndex = section.components.findIndex(c => c.name === componentName);
+    if (existingIndex >= 0) {
+      // Update existing component
+      section.components[existingIndex] = { name: componentName, size, gap };
+    } else {
+      // Add new component
+      section.components.push({ name: componentName, size, gap });
+    }
+
+    await this.saveLayout(projectId, layout);
+
+    // Calculate position
+    const position = this.calculateComponentPosition(layout, sectionName, componentName);
+
+    return { layout, position };
+  }
+
+  /**
+   * Add or update a layer
+   */
+  async upsertLayer(projectId: string, layer: Layer): Promise<LayoutState> {
+    const layout = await this.getLayout(projectId);
+    const existingIndex = layout.layers.findIndex(l => l.name === layer.name);
+    if (existingIndex >= 0) {
+      layout.layers[existingIndex] = layer;
+    } else {
+      layout.layers.push(layer);
+    }
+    await this.saveLayout(projectId, layout);
+    return layout;
+  }
+
+  /**
+   * Recalculate positions for all components in a section.
+   * This ensures row layouts stay properly centered as components are added.
+   * Must be called after adding/removing components from a section.
+   */
+  async recalculateSectionPositions(projectId: string, sectionName: string): Promise<CanvasComponent[]> {
+    const layout = await this.getLayout(projectId);
+    const canvas = await this.getCanvas(projectId);
+    const section = layout.sections.find(s => s.name === sectionName);
+
+    if (!section) return [];
+
+    const updated: CanvasComponent[] = [];
+    for (const comp of section.components) {
+      const position = this.calculateComponentPosition(layout, sectionName, comp.name);
+      const canvasComp = canvas.find(c => c.componentName === comp.name);
+      if (canvasComp) {
+        canvasComp.position = position;
+        updated.push(canvasComp);
+      }
+    }
+
+    await this.saveCanvas(projectId, canvas);
+    return updated;
+  }
+
+  /**
+   * Calculate component position based on section layout
+   */
+  calculateComponentPosition(
+    layout: LayoutState,
+    sectionName: string,
+    componentName: string
+  ): { x: number; y: number } {
+    const pageWidth = layout.pageStyle.width;
+    const SECTION_GAP = 40;
+    const COMPONENT_GAP = 20;
+
+    let currentY = 0;
+
+    for (const section of layout.sections) {
+      const sectionHeight = this.calculateSectionHeight(section);
+
+      if (section.name === sectionName) {
+        // Found the section, now find the component
+        if (section.layout === 'column') {
+          // Column layout: components stack vertically, each centered
+          // Gap is applied BEFORE each component (except first)
+          let componentY = currentY;
+          for (let i = 0; i < section.components.length; i++) {
+            const comp = section.components[i];
+            // Add gap before this component (except first)
+            if (i > 0) {
+              componentY += comp.gap ?? COMPONENT_GAP;
+            }
+            if (comp.name === componentName) {
+              const x = (pageWidth - comp.size.width) / 2;
+              return { x, y: componentY };
+            }
+            componentY += comp.size.height;
+          }
+        } else {
+          // Row layout: components side by side, entire row centered
+          // Gap is applied BEFORE each component (except first)
+          const totalWidth = section.components.reduce((sum, c, i) => {
+            return sum + c.size.width + (i > 0 ? (c.gap ?? COMPONENT_GAP) : 0);
+          }, 0);
+          const rowHeight = Math.max(...section.components.map(c => c.size.height));
+
+          let componentX = (pageWidth - totalWidth) / 2;
+          for (let i = 0; i < section.components.length; i++) {
+            const comp = section.components[i];
+            // Add gap before this component (except first)
+            if (i > 0) {
+              componentX += comp.gap ?? COMPONENT_GAP;
+            }
+            if (comp.name === componentName) {
+              // Center component vertically within row
+              const y = currentY + (rowHeight - comp.size.height) / 2;
+              return { x: componentX, y };
+            }
+            componentX += comp.size.width;
+          }
+        }
+      }
+
+      currentY += sectionHeight + (section.gap ?? SECTION_GAP);
+    }
+
+    // Component not found, return default position
+    return { x: 0, y: currentY };
+  }
+
+  /**
+   * Get the order index for a section name.
+   * Lower index = appears earlier in page (top).
+   * Unknown sections get a high index to appear at the end.
+   */
+  private getSectionOrderIndex(sectionName: string): number {
+    const lowerName = sectionName.toLowerCase();
+    const index = SECTION_ORDER.findIndex(s => lowerName.includes(s) || s.includes(lowerName));
+    return index >= 0 ? index : 999; // Unknown sections go at the end
+  }
+
+  /**
+   * Calculate section height
+   */
+  private calculateSectionHeight(section: Section): number {
+    const COMPONENT_GAP = 20;
+
+    if (section.layout === 'column') {
+      return section.components.reduce((sum, c, i) => {
+        return sum + c.size.height + (i > 0 ? (c.gap ?? COMPONENT_GAP) : 0);
+      }, 0);
+    } else {
+      // Row layout: height is the tallest component
+      return Math.max(...section.components.map(c => c.size.height), 0);
+    }
   }
 
   /**

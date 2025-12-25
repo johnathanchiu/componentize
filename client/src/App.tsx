@@ -4,6 +4,7 @@ import { EditorPage } from '@/pages/EditorPage';
 import { useCanvasActions } from '@/store/canvasStore';
 import { useGenerationActions } from '@/store/generationStore';
 import { useCurrentProject, useProjectActions, type Project } from '@/store/projectStore';
+import { useLayoutActions } from '@/store/layoutStore';
 import { useBlockAccumulator } from '@/hooks/useBlockAccumulator';
 import { getProject } from '@/lib/api';
 
@@ -11,6 +12,7 @@ function App() {
   const { clear: clearCanvas, setComponents: setCanvasComponents } = useCanvasActions();
   const currentProject = useCurrentProject();
   const { setCurrentProject, setAvailableComponents } = useProjectActions();
+  const { setLayout, reset: resetLayout } = useLayoutActions();
   // Use typed selector hooks for optimal re-rendering
   const { setCurrentProjectId, clearConversation, loadConversationFromHistory } = useGenerationActions();
   const { resumeStream } = useBlockAccumulator();
@@ -24,6 +26,11 @@ function App() {
       setCurrentProjectId(projectId);
       setCanvasComponents(result.canvas || [], projectId);
       setAvailableComponents(result.components || []);
+
+      // Load layout state (sections, layers, pageStyle)
+      if (result.layout) {
+        setLayout(result.layout);
+      }
 
       // ALWAYS load history from disk first (completed turns)
       if (result.history && result.history.length > 0) {
@@ -68,6 +75,7 @@ function App() {
     setCurrentProjectId(null);
     clearConversation();
     clearCanvas();
+    resetLayout();
     window.history.pushState({}, '', '/');
   };
 
@@ -84,6 +92,7 @@ function App() {
         setCurrentProjectId(null);
         clearConversation();
         clearCanvas();
+        resetLayout();
       }
     };
 

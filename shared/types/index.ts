@@ -132,7 +132,45 @@ export interface PageLayout {
 }
 
 // ============================================================================
-// Layout DSL Types
+// Section-Based Layout Types
+// ============================================================================
+
+export interface PageStyle {
+  width: number;
+  background?: string;
+}
+
+export interface SectionComponent {
+  name: string;
+  size: { width: number; height: number };
+  gap?: number; // Gap from previous component in section
+}
+
+export interface Section {
+  name: string;
+  layout: 'row' | 'column';
+  components: SectionComponent[];
+  gap?: number; // Gap between sections (default 40)
+}
+
+export interface Layer {
+  name: string;
+  type: 'modal' | 'drawer' | 'popover';
+  components: string[];
+  trigger?: {
+    componentName: string;
+    event: 'click' | 'hover';
+  };
+}
+
+export interface LayoutState {
+  pageStyle: PageStyle;
+  sections: Section[];
+  layers: Layer[];
+}
+
+// ============================================================================
+// Layout DSL Types (Legacy)
 // ============================================================================
 
 export type LayoutPrimitiveType = 'Stack' | 'Flex' | 'Grid' | 'Container';

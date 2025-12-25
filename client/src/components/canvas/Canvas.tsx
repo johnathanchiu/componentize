@@ -24,6 +24,7 @@ import {
 import { useCanvasKeyboard } from '@/hooks/useKeyboard';
 import { useGenerationActions } from '@/store/generationStore';
 import { useCurrentProject } from '@/store/projectStore';
+import { usePageStyle } from '@/store/layoutStore';
 import { groupConnectionsByKey, generateConnectionColors } from '@/lib/sharedStore';
 import { ComponentNode, type ComponentNodeData } from './ComponentNode';
 import { PAGE_WIDTHS, type PageWidthPreset } from '@/types/index';
@@ -59,6 +60,7 @@ const nodeTypes = {
 function CanvasInner() {
   const { screenToFlowPosition, getNodes } = useReactFlow();
   const currentProject = useCurrentProject();
+  const pageStyle = usePageStyle();
   const { isDragModeActive } = useCanvasKeyboard();
 
   // Use typed selector hooks for optimal re-rendering
@@ -72,17 +74,15 @@ function CanvasInner() {
 
   const {
     select,
-    updateSize,
-    clearSize,
     updatePosition,
     add,
     toggleConnections,
     pushToHistory,
   } = useCanvasActions();
 
-  // Page artboard dimensions
-  const pageWidth = getPageWidth(currentProject?.pageStyle?.width);
-  const pageBackground = currentProject?.pageStyle?.background || '#ffffff';
+  // Page artboard dimensions - prefer layoutStore pageStyle, fallback to project pageStyle
+  const pageWidth = getPageWidth(pageStyle?.width ?? currentProject?.pageStyle?.width);
+  const pageBackground = pageStyle?.background ?? currentProject?.pageStyle?.background ?? '#ffffff';
 
   // Derive ReactFlow nodes from canvas components
   const derivedNodes = useMemo((): Node<ComponentNodeData | { width: number; height: number; background: string }>[] => {
@@ -97,11 +97,9 @@ function CanvasInner() {
         componentName: item.componentName,
         projectId: currentProject.id,
         targetSize: item.size,
-        onResize: (width: number, height: number) => updateSize(item.id, width, height),
         onFix: (errorMessage: string, errorStack?: string) => {
           startFixing(item.componentName, { message: errorMessage, stack: errorStack });
         },
-        onClearSize: () => clearSize(item.id),
       },
       selected: selectedId === item.id,
       zIndex: 10,
@@ -134,7 +132,7 @@ function CanvasInner() {
     };
 
     return [artboardNode, ...componentNodes];
-  }, [components, currentProject, selectedId, updateSize, startFixing, clearSize, pageWidth, pageBackground]);
+  }, [components, currentProject, selectedId, startFixing, pageWidth, pageBackground]);
 
   // ReactFlow local state
   const [nodes, setNodes] = useState<Node<any>[]>([]);

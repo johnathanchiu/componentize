@@ -11,37 +11,6 @@ interface UpdateTodosParams {
 // Per-project todo state (maintained server-side)
 const projectTodos = new Map<string, AgentTodo[]>();
 
-/**
- * Convert imperative form to present continuous (activeForm)
- * "Create Hero" -> "Creating Hero"
- * "Add navigation" -> "Adding navigation"
- */
-function toActiveForm(content: string): string {
-  const words = content.trim().split(/\s+/);
-  if (words.length === 0) return content;
-
-  const verb = words[0].toLowerCase();
-  let activeVerb: string;
-
-  // Common verb transformations
-  if (verb.endsWith('e') && !verb.endsWith('ee')) {
-    // create -> creating, make -> making
-    activeVerb = verb.slice(0, -1) + 'ing';
-  } else if (verb.endsWith('ie')) {
-    // tie -> tying, lie -> lying
-    activeVerb = verb.slice(0, -2) + 'ying';
-  } else if (/^[a-z]+[aeiou][bcdfghjklmnpqrstvwxyz]$/.test(verb) && verb.length <= 4) {
-    // run -> running, set -> setting (short words with consonant ending)
-    activeVerb = verb + verb.slice(-1) + 'ing';
-  } else {
-    activeVerb = verb + 'ing';
-  }
-
-  // Capitalize first letter
-  activeVerb = activeVerb.charAt(0).toUpperCase() + activeVerb.slice(1);
-
-  return [activeVerb, ...words.slice(1)].join(' ');
-}
 
 /**
  * UpdateTodos invocation
@@ -62,7 +31,7 @@ class UpdateTodosInvocation implements ToolInvocation<UpdateTodosParams> {
         id: `todo-${Date.now()}-${index}`,
         content,
         status: 'pending' as const,
-        activeForm: toActiveForm(content),
+        activeForm: content,
       }));
       actions.push(`Set ${set.length} tasks`);
     }

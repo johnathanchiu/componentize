@@ -12,73 +12,12 @@ import { ComponentErrorBoundary } from './ErrorBoundary';
 import { ErrorOverlay } from './ErrorOverlay';
 import type { Size } from '@/shared/types';
 
-// Default size for components that don't have an explicit size set
-const DEFAULT_SIZE: Size = { width: 300, height: 200 };
-
-// Resize handle component
-interface ResizeHandleProps {
-  startWidth: number;
-  startHeight: number;
-  onResize?: (width: number, height: number) => void;
-}
-
-function ResizeHandle({ startWidth, startHeight, onResize }: ResizeHandleProps) {
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const initialX = e.clientX;
-    const initialY = e.clientY;
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      moveEvent.preventDefault();
-      const deltaX = moveEvent.clientX - initialX;
-      const deltaY = moveEvent.clientY - initialY;
-
-      // Minimum size constraints
-      const newWidth = Math.max(100, startWidth + deltaX);
-      const newHeight = Math.max(80, startHeight + deltaY);
-
-      onResize?.(Math.round(newWidth), Math.round(newHeight));
-    };
-
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  };
-
-  return (
-    <div
-      onMouseDown={handleMouseDown}
-      className="nodrag nopan absolute"
-      style={{
-        bottom: -8,
-        right: -8,
-        width: 16,
-        height: 16,
-        backgroundColor: '#3b82f6',
-        border: '2px solid white',
-        borderRadius: 4,
-        cursor: 'nwse-resize',
-        zIndex: 1001,
-        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
-      }}
-    />
-  );
-}
-
 export interface ComponentNodeData extends Record<string, unknown> {
   componentName: string;
   projectId: string;
   targetSize?: Size;
   onFix?: (errorMessage: string, errorStack?: string) => void;
   onConnectionsDetected?: (source: string) => void;
-  onResize?: (width: number, height: number) => void;
-  onClearSize?: () => void;
 }
 
 function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNodeData }) {
@@ -143,24 +82,13 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
     }
   };
 
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    // Double-click to reset size to default
-    if (data.targetSize && data.onClearSize) {
-      e.stopPropagation();
-      console.log('Clearing size for:', data.componentName);
-      data.onClearSize();
-    }
-  };
-
-  // Get current size - use targetSize or default
-  const currentSize = data.targetSize || DEFAULT_SIZE;
-
-  // Container style
-  const containerStyle: React.CSSProperties = {
-    width: currentSize.width,
-    height: currentSize.height,
-    overflow: 'hidden',
-  };
+  // Container style - use size from layout, no overflow clipping
+  const containerStyle: React.CSSProperties = data.targetSize
+    ? {
+        width: data.targetSize.width,
+        height: data.targetSize.height,
+      }
+    : {};
 
   // Selection/hover styling
   const selectionStyle: React.CSSProperties = selected
@@ -181,18 +109,17 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
     <div
       className="relative"
       onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Main container */}
+      {/* Main container - no overflow hidden, no rounded */}
       <div
-        className="relative rounded"
+        className="relative"
         style={{ ...containerStyle, ...selectionStyle }}
       >
         {/* Component content */}
         {loading && (
-          <div className="flex items-center justify-center w-full h-full text-xs text-neutral-400">
+          <div className="flex items-center justify-center text-xs text-neutral-400" style={containerStyle}>
             Loading...
           </div>
         )}
@@ -201,9 +128,7 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
             onError={(error) => setComponentError({ message: error.message, stack: error.stack })}
             resetKey={componentVersion}
           >
-            <div className="w-full h-full">
-              <Component />
-            </div>
+            <Component />
           </ComponentErrorBoundary>
         )}
 
@@ -215,15 +140,6 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
           />
         )}
       </div>
-
-      {/* Resize handle */}
-      {(selected || isHovered) && (
-        <ResizeHandle
-          startWidth={currentSize.width}
-          startHeight={currentSize.height}
-          onResize={data.onResize}
-        />
-      )}
     </div>
   );
 }

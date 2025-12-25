@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+/* Scan server workspace for component classes (Tailwind v4) */
+@source "../server/.workspace/projects/**/*.tsx";
+
+/* Safelist dynamic color classes for AI-generated components (Tailwind v4.1+) */
+@source inline("{hover:,}bg-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("{hover:,}text-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("{hover:,}border-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("from-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("to-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("via-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("bg-gradient-to-{r,l,t,b,tr,tl,br,bl}");
+@source inline("bg-clip-text text-transparent");
+
 /* shadcn/ui CSS variables */
 :root {
   --background: 0 0% 100%;
