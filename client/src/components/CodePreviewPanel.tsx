@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Code2, RefreshCw, X } from 'lucide-react';
-import { getProjectComponentCode } from '../lib/api';
-import { useGenerationMode, useEditingComponentName, useStreamStatus } from '../features/generation/generationStore';
-import { useCurrentProject } from '../store/projectStore';
-import { useResizablePanel } from '../hooks/useResizablePanel';
+import { getProjectComponentCode } from '@/lib/api';
+import { useGenerationMode, useEditingComponentName, useStreamStatus } from '@/store/generationStore';
+import { useCurrentProject } from '@/store/projectStore';
+import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { ResizeHandle } from './ResizeHandle';
 
 export function CodePreviewPanel() {

@@ -6,8 +6,8 @@ import {
   useEditingComponentName,
   useComponentVersion,
   useGenerationActions,
-} from '../generation/generationStore';
-import { compileComponent } from '../../lib/componentRenderer';
+} from '@/store/generationStore';
+import { compileComponent } from '@/lib/componentRenderer';
 import { ComponentErrorBoundary } from './ErrorBoundary';
 import { ErrorOverlay } from './ErrorOverlay';
 import type { Size } from '@/shared/types';

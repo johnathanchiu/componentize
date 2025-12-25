@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useResizablePanel } from '../../hooks/useResizablePanel';
-import { ResizeHandle } from '../../components/ResizeHandle';
-import { PromptForm } from '../generation/PromptForm';
-import { LibraryPanel } from '../library/LibraryPanel';
-import { useGenerationMode } from '../generation/generationStore';
-import { useCurrentProject } from '../../store/projectStore';
+import { useResizablePanel } from '@/hooks/useResizablePanel';
+import { ResizeHandle } from '@/components/ResizeHandle';
+import { PromptForm } from '@/components/chat/PromptForm';
+import { LibraryPanel } from '@/components/library/LibraryPanel';
+import { useGenerationMode } from '@/store/generationStore';
+import { useCurrentProject } from '@/store/projectStore';
 
 export function Sidebar() {
   const [activeTab, setActiveTab] = useState<'create' | 'library'>('library');

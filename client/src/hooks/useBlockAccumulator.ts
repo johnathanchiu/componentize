@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
-import { useGenerationStore } from '../features/generation/generationStore';
-import { useProjectStore } from '../store/projectStore';
-import { useCanvasStore } from '../features/canvas/canvasStore';
+import { useGenerationStore } from '@/store/generationStore';
+import { useProjectStore } from '@/store/projectStore';
+import { useCanvasStore } from '@/store/canvasStore';
 import type { StreamEvent } from '@/shared/types';
 
 /**
@@ -116,7 +116,7 @@ export function useBlockAccumulator() {
    * We append buffer events on top of disk history.
    */
   const resumeStream = useCallback(async (projectId: string) => {
-    const { subscribeToStream } = await import('../lib/api');
+    const { subscribeToStream } = await import('@/lib/api');
     const genStore = useGenerationStore.getState();
 
     // DON'T clear conversation - disk history is already loaded

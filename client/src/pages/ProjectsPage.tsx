@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Folder, Trash2, Loader2, ArrowUp } from 'lucide-react';
-import { useProjectStore, type Project } from '../../store/projectStore';
-import { listProjects, createProject, deleteProject } from '../../lib/api';
+import { useProjectStore, type Project } from '@/store/projectStore';
+import { listProjects, createProject, deleteProject } from '@/lib/api';
 
 // Hardcoded suggestions for UI components
 const SUGGESTIONS = [

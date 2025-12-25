@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 import { RefreshCw, Wrench } from 'lucide-react';
 import { ComponentCard } from './ComponentCard';
-import { useLibrary } from './useLibrary';
-import { useCurrentProject, useAvailableComponents } from '../../store/projectStore';
-import { useIsGenerating } from '../generation/generationStore';
+import { useLibrary } from '@/hooks/useLibrary';
+import { useCurrentProject, useAvailableComponents } from '@/store/projectStore';
+import { useIsGenerating } from '@/store/generationStore';
 
 export function LibraryPanel() {
   // Use typed selector hooks for optimal re-rendering

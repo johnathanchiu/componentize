@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Wand2, Loader2, X, Pencil, Wrench } from 'lucide-react';
-import { useGeneration } from './useGeneration';
+import { useGeneration } from '@/hooks/useGeneration';
 import { TodoList } from './TodoList';
 import { ChatPanel } from './ChatPanel';
-import { useProjectStore } from '../../store/projectStore';
+import { useProjectStore } from '@/store/projectStore';
 
 export function PromptForm() {
   const [prompt, setPrompt] = useState('');

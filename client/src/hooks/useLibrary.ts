@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
-import { useLibraryComponents, useBrokenComponents, useLibraryActions } from './libraryStore';
-import { useCurrentProject, useProjectActions } from '../../store/projectStore';
-import { useGenerationActions } from '../generation/generationStore';
-import { getProject, deleteProjectComponent } from '../../lib/api';
+import { useLibraryComponents, useBrokenComponents, useLibraryActions } from '@/store/libraryStore';
+import { useCurrentProject, useProjectActions } from '@/store/projectStore';
+import { useGenerationActions } from '@/store/generationStore';
+import { getProject, deleteProjectComponent } from '@/lib/api';
 
 /**
  * Main hook for library operations.

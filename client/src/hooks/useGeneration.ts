@@ -11,10 +11,10 @@ import {
   useConversationMessages,
   useComponentVersions,
   useGenerationActions,
-} from './generationStore';
+} from '@/store/generationStore';
 import { useStream } from './useStream';
-import { useCurrentProject } from '../../store/projectStore';
-import { generateStream, editProjectComponentStream } from '../../lib/api';
+import { useCurrentProject } from '@/store/projectStore';
+import { generateStream, editProjectComponentStream } from '@/lib/api';
 
 /**
  * Main hook for generation operations.

@@ -20,13 +20,13 @@ import {
   useConnections,
   useShowConnections,
   useCanvasActions,
-} from './canvasStore';
-import { useCanvasKeyboard } from './useKeyboard';
-import { useGenerationActions } from '../generation/generationStore';
-import { useCurrentProject } from '../../store/projectStore';
-import { groupConnectionsByKey, generateConnectionColors } from '../../lib/sharedStore';
+} from '@/store/canvasStore';
+import { useCanvasKeyboard } from '@/hooks/useKeyboard';
+import { useGenerationActions } from '@/store/generationStore';
+import { useCurrentProject } from '@/store/projectStore';
+import { groupConnectionsByKey, generateConnectionColors } from '@/lib/sharedStore';
 import { ComponentNode, type ComponentNodeData } from './ComponentNode';
-import { PAGE_WIDTHS, type PageWidthPreset } from '../../types/index';
+import { PAGE_WIDTHS, type PageWidthPreset } from '@/types/index';
 
 // Helper to get page width from pageStyle
 function getPageWidth(width: number | PageWidthPreset | undefined): number {

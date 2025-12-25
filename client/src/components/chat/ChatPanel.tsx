@@ -8,9 +8,9 @@ import {
   type ConversationMessage,
   type MessageBlock,
   type ToolCallState,
-} from './generationStore';
-import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from '../../components/ui/collapsible';
-import { cn } from '../../lib/utils';
+} from '@/store/generationStore';
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from '@/components/ui/collapsible';
+import { cn } from '@/lib/utils';
 
 // Helper to get human-readable tool labels
 function getToolLabel(toolName: string, hasResult: boolean, hasError: boolean): string {

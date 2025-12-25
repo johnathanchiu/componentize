@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Download, Check } from 'lucide-react';
-import { exportPageAsZip } from '../lib/api';
-import { useCanvasComponents } from '../features/canvas/canvasStore';
-import { useCurrentProject } from '../store/projectStore';
+import { exportPageAsZip } from '@/lib/api';
+import { useCanvasComponents } from '@/store/canvasStore';
+import { useCurrentProject } from '@/store/projectStore';
 
 export function ExportButton() {
   // Use typed selector hooks for optimal re-rendering

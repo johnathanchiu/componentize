@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useCanvasStore } from './canvasStore';
+import { useCanvasStore } from '@/store/canvasStore';
 
 /**
  * Hook for canvas keyboard shortcuts.

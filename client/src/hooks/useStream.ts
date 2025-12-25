@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
-import { useGenerationActions } from './generationStore';
-import { useCanvasActions } from '../canvas/canvasStore';
-import { useProjectActions } from '../../store/projectStore';
+import { useGenerationActions } from '@/store/generationStore';
+import { useCanvasActions } from '@/store/canvasStore';
+import { useProjectActions } from '@/store/projectStore';
 import type { StreamEvent } from '@/shared/types';
 
 /**

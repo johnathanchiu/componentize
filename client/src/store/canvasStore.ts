@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { CanvasComponent } from '@/shared/types';
-import { saveProjectCanvas } from '../../lib/api';
-import type { StateConnection } from '../../lib/sharedStore';
+import { saveProjectCanvas } from '@/lib/api';
+import type { StateConnection } from '@/lib/sharedStore';
 
 // Per-project debounce for saving canvas (avoids cross-project collisions)
 const saveTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
