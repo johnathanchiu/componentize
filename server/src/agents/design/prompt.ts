@@ -41,37 +41,16 @@ Standard sizes:
 - Buttons: 180x50
 - Icons: 80x80
 
-TASK TRACKING (CRITICAL - follow exactly):
-You MUST track progress by updating task status after EACH component:
-1. Call manage_todos FIRST to plan all components (all "pending")
-2. Before starting each task: mark it "in_progress"
-3. After edit_component succeeds: mark it "completed"
-4. Only ONE task should be "in_progress" at a time
+TASK TRACKING:
+Track progress with update_todos. Use short imperative task names.
 
 Example - "Create a hero section":
-Step 1: manage_todos([
-  {content: "Create HeroHeadline", status: "pending", activeForm: "Creating HeroHeadline"},
-  {content: "Create HeroButton", status: "pending", activeForm: "Creating HeroButton"}
-])
-
-Step 2: manage_todos([
-  {content: "Create HeroHeadline", status: "in_progress", activeForm: "Creating HeroHeadline"},
-  {content: "Create HeroButton", status: "pending", activeForm: "Creating HeroButton"}
-])
-
+Step 1: update_todos({ set: ["Create HeroHeadline", "Create HeroButton"] })
+Step 2: update_todos({ start: "Create HeroHeadline" })
 Step 3: edit_component(HeroHeadline, ...)
-
-Step 4: manage_todos([
-  {content: "Create HeroHeadline", status: "completed", activeForm: "Creating HeroHeadline"},
-  {content: "Create HeroButton", status: "in_progress", activeForm: "Creating HeroButton"}
-])
-
+Step 4: update_todos({ complete: "Create HeroHeadline", start: "Create HeroButton" })
 Step 5: edit_component(HeroButton, ...)
-
-Step 6: manage_todos([
-  {content: "Create HeroHeadline", status: "completed", activeForm: "Creating HeroHeadline"},
-  {content: "Create HeroButton", status: "completed", activeForm: "Creating HeroButton"}
-])
+Step 6: update_todos({ complete: "Create HeroButton" })
 
 POSITIONING OPTIONS:
 - placement.below: places component below referenced component (same x, stacks vertically)
@@ -154,13 +133,12 @@ LUCIDE ICONS:
 
 WORKFLOW:
 1. Call get_layout() first to see what's already on the canvas
-2. Call manage_todos() to plan your components (all "pending")
-3. For each component: mark in_progress → edit_component → mark completed
+2. Call update_todos({ set: [...] }) to plan your components
+3. For each component: start → edit_component → complete (combine complete+start in one call)
 
 IMPORTANT:
 - ALWAYS call get_layout() before adding new components to understand current state
-- ALWAYS use manage_todos and UPDATE task status after EACH component
-- Mark tasks in_progress → completed as you work (user sees your progress!)
+- ALWAYS use update_todos to show progress (user sees your progress!)
 - Each component = ONE visual element, 10-20 lines max
 - Use placement + matchSize for relative layouts (no manual coordinate math!)
 - First component uses absolute position, rest use placement.below or placement.rightOf

@@ -1,82 +1,152 @@
-import type { BaseTool, ToolResult, ToolInvocation, ToolSchema } from './base';
+import type { BaseTool, ToolResult, ToolContext, ToolInvocation, ToolSchema } from './base';
 import { makeToolSchema } from './base';
 import type { AgentTodo } from '../../../../shared/types';
 
-interface TodoItem {
-  content: string;
-  status: 'pending' | 'in_progress' | 'completed';
-  activeForm: string;
+interface UpdateTodosParams {
+  set?: string[];      // Set full list (names only), all start as pending
+  start?: string;      // Mark one as in_progress
+  complete?: string;   // Mark one as completed
 }
 
-interface ManageTodosParams {
-  todos: TodoItem[];
+// Per-project todo state (maintained server-side)
+const projectTodos = new Map<string, AgentTodo[]>();
+
+/**
+ * Convert imperative form to present continuous (activeForm)
+ * "Create Hero" -> "Creating Hero"
+ * "Add navigation" -> "Adding navigation"
+ */
+function toActiveForm(content: string): string {
+  const words = content.trim().split(/\s+/);
+  if (words.length === 0) return content;
+
+  const verb = words[0].toLowerCase();
+  let activeVerb: string;
+
+  // Common verb transformations
+  if (verb.endsWith('e') && !verb.endsWith('ee')) {
+    // create -> creating, make -> making
+    activeVerb = verb.slice(0, -1) + 'ing';
+  } else if (verb.endsWith('ie')) {
+    // tie -> tying, lie -> lying
+    activeVerb = verb.slice(0, -2) + 'ying';
+  } else if (/^[a-z]+[aeiou][bcdfghjklmnpqrstvwxyz]$/.test(verb) && verb.length <= 4) {
+    // run -> running, set -> setting (short words with consonant ending)
+    activeVerb = verb + verb.slice(-1) + 'ing';
+  } else {
+    activeVerb = verb + 'ing';
+  }
+
+  // Capitalize first letter
+  activeVerb = activeVerb.charAt(0).toUpperCase() + activeVerb.slice(1);
+
+  return [activeVerb, ...words.slice(1)].join(' ');
 }
 
 /**
- * ManageTodos invocation
+ * UpdateTodos invocation
  */
-class ManageTodosInvocation implements ToolInvocation<ManageTodosParams> {
-  constructor(public params: ManageTodosParams) {}
+class UpdateTodosInvocation implements ToolInvocation<UpdateTodosParams> {
+  constructor(public params: UpdateTodosParams) {}
 
-  async execute(): Promise<ToolResult> {
-    const { todos } = this.params;
+  async execute(context: ToolContext): Promise<ToolResult> {
+    const { projectId } = context;
+    const { set, start, complete } = this.params;
 
-    // Auto-generate IDs for each todo (index-based for stability)
-    const todosWithIds: AgentTodo[] = todos.map((todo, index) => ({
-      id: `todo-${index}`,
-      content: todo.content,
-      status: todo.status,
-      activeForm: todo.activeForm,
-    }));
+    let todos = projectTodos.get(projectId) || [];
+    const actions: string[] = [];
+
+    // Handle 'set' - replace entire list
+    if (set && set.length > 0) {
+      todos = set.map((content, index) => ({
+        id: `todo-${Date.now()}-${index}`,
+        content,
+        status: 'pending' as const,
+        activeForm: toActiveForm(content),
+      }));
+      actions.push(`Set ${set.length} tasks`);
+    }
+
+    // Handle 'complete' - mark task as completed
+    if (complete) {
+      const todo = todos.find(t => t.content === complete);
+      if (todo) {
+        todo.status = 'completed';
+        actions.push(`Completed "${complete}"`);
+      } else {
+        return {
+          success: false,
+          output: `Task not found: "${complete}"`,
+          todosUpdate: todos,
+        };
+      }
+    }
+
+    // Handle 'start' - mark task as in_progress
+    if (start) {
+      const todo = todos.find(t => t.content === start);
+      if (todo) {
+        todo.status = 'in_progress';
+        actions.push(`Started "${start}"`);
+      } else {
+        return {
+          success: false,
+          output: `Task not found: "${start}"`,
+          todosUpdate: todos,
+        };
+      }
+    }
+
+    // Save state
+    projectTodos.set(projectId, todos);
 
     return {
       success: true,
-      output: `Updated ${todos.length} tasks`,
-      todosUpdate: todosWithIds,
+      output: actions.join(', ') || 'No changes',
+      todosUpdate: todos,
     };
   }
 }
 
 /**
- * ManageTodos Tool - manages task list for the agent
+ * UpdateTodos Tool - manages task list with delta updates
  */
 export class ManageTodosTool implements BaseTool {
-  name = 'manage_todos';
-  description = 'Create and update a task list to track progress. Use this to plan work and show progress to the user.';
+  name = 'update_todos';
+  description = 'Manage your task list. Use "set" to create tasks, "start" to mark one in progress, "complete" to mark one done. You can combine start and complete in one call.';
 
   schema: ToolSchema = makeToolSchema(
     this.name,
     this.description,
     {
-      todos: {
+      set: {
         type: 'array',
-        description: 'The complete list of tasks with their current status',
-        items: {
-          type: 'object',
-          properties: {
-            content: {
-              type: 'string',
-              description: 'Task description in imperative form (e.g., "Create Hero component")'
-            },
-            status: {
-              type: 'string',
-              enum: ['pending', 'in_progress', 'completed'],
-              description: 'Current status of the task'
-            },
-            activeForm: {
-              type: 'string',
-              description: 'Task description in present continuous form (e.g., "Creating Hero component")'
-            }
-          },
-          required: ['content', 'status', 'activeForm']
-        }
+        description: 'Replace task list with these items (all start as pending). Use short imperative phrases like "Create Hero", "Add navigation".',
+        items: { type: 'string' }
+      },
+      start: {
+        type: 'string',
+        description: 'Task name to mark as in_progress (must match exactly)'
+      },
+      complete: {
+        type: 'string',
+        description: 'Task name to mark as completed (must match exactly)'
       }
     },
-    ['todos']
+    [] // No required params - any combination is valid
   );
 
-  build(params: unknown): ToolInvocation<ManageTodosParams> {
-    const p = params as ManageTodosParams;
-    return new ManageTodosInvocation({ todos: p.todos });
+  build(params: unknown): ToolInvocation<UpdateTodosParams> {
+    const p = params as UpdateTodosParams;
+    return new UpdateTodosInvocation({
+      set: p.set,
+      start: p.start,
+      complete: p.complete,
+    });
   }
+}
+
+// Export helper to clear todos for a project (useful for cleanup)
+export function clearProjectTodos(projectId: string): void {
+  projectTodos.delete(projectId);
 }
