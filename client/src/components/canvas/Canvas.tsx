@@ -92,6 +92,7 @@ function CanvasInner() {
   const {
     select,
     updatePosition,
+    updateSize,
     add,
     toggleConnections,
     pushToHistory,
@@ -114,6 +115,7 @@ function CanvasInner() {
         componentName: item.componentName,
         projectId: currentProject.id,
         targetSize: item.size,
+        isEditMode: isDragModeActive,
         onFix: (errorMessage: string, errorStack?: string) => {
           startFixing(item.componentName, { message: errorMessage, stack: errorStack });
         },
@@ -149,7 +151,7 @@ function CanvasInner() {
     };
 
     return [artboardNode, ...componentNodes];
-  }, [components, currentProject, selectedId, startFixing, pageWidth, pageBackground]);
+  }, [components, currentProject, selectedId, startFixing, pageWidth, pageBackground, isDragModeActive]);
 
   // ReactFlow local state
   const [nodes, setNodes] = useState<Node<CanvasNodeData>[]>([]);
@@ -230,7 +232,7 @@ function CanvasInner() {
 
   // Event handlers
   const handleNodesChange = useCallback(
-    (changes: NodeChange<Node<ComponentNodeData>>[]) => {
+    (changes: NodeChange<Node<CanvasNodeData>>[]) => {
       setNodes((current) => applyNodeChanges(changes, current));
 
       changes.forEach((change) => {
@@ -241,9 +243,13 @@ function CanvasInner() {
             select(null);
           }
         }
+        // Handle resize - persist when resizing ends (resizing === false)
+        if (change.type === 'dimensions' && change.resizing === false && change.dimensions) {
+          updateSize(change.id, change.dimensions.width, change.dimensions.height);
+        }
       });
     },
-    [select, selectedId]
+    [select, selectedId, updateSize]
   );
 
   const handleNodeDragStart = useCallback(() => {

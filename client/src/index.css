@@ -69,10 +69,6 @@ body {
   height: fit-content;
 }
 
-/* Hide ALL of React Flow's default resize controls - we use our own */
-.react-flow__resize-control {
-  display: none !important;
-}
 
 /* Drag preview node for library-to-canvas drag */
 .react-flow__node.drag-preview-node,

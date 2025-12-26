@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type ComponentType, memo } from 'react';
-import { type NodeProps } from '@xyflow/react';
+import { type NodeProps, NodeResizer } from '@xyflow/react';
 import {
   useIsGenerating,
   useGenerationMode,
@@ -16,6 +16,7 @@ export interface ComponentNodeData extends Record<string, unknown> {
   componentName: string;
   projectId: string;
   targetSize?: Size;
+  isEditMode?: boolean;
   onFix?: (errorMessage: string, errorStack?: string) => void;
   onConnectionsDetected?: (source: string) => void;
 }
@@ -110,13 +111,23 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
   return (
     <div
       className="relative"
-      onClick={handleClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      style={{ padding: 8, margin: -8 }}
     >
-      {/* Main container - no overflow hidden, no rounded */}
+      {/* Resize handles - visible when hovering AND in edit mode (Cmd held) */}
+      <NodeResizer
+        minWidth={100}
+        minHeight={50}
+        isVisible={isHovered && data.isEditMode}
+        lineClassName="!border-blue-400"
+        handleClassName="!w-2.5 !h-2.5 !bg-blue-500 !border-white"
+      />
+
+      {/* Main container */}
       <div
         className="relative"
+        onClick={handleClick}
         style={{ ...containerStyle, ...selectionStyle }}
       >
         {/* Component content */}
