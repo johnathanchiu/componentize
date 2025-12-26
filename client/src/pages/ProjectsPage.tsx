@@ -3,12 +3,28 @@ import { Folder, Trash2, Loader2, ArrowUp } from 'lucide-react';
 import { useProjectStore, type Project } from '@/store/projectStore';
 import { listProjects, createProject, deleteProject } from '@/lib/api';
 
-// Hardcoded suggestions for UI components
+// Hardcoded suggestions for UI components - showcase the agent's capabilities
 const SUGGESTIONS = [
-  { emoji: '📊', label: 'Stats Dashboard', prompt: 'Build a stats dashboard card showing key metrics with icons and trend indicators' },
-  { emoji: '🚀', label: 'SaaS Landing Page', prompt: 'Build a SaaS landing page with hero section, feature grid, pricing cards, and call-to-action' },
-  { emoji: '📝', label: 'Contact Form', prompt: 'Build a contact form with name, email, message fields, and validation' },
-  { emoji: '🎯', label: 'Hero Section', prompt: 'Build a hero section with headline, subheadline, CTA buttons, and an image' },
+  {
+    emoji: '🚀',
+    label: 'SaaS Landing Page',
+    prompt: 'Build a complete SaaS landing page with dark theme: navbar with logo and signup button, hero section with headline and CTA, 3 feature cards in a row, pricing section with 3 tiers, and footer. Make the signup button open a modal.'
+  },
+  {
+    emoji: '📊',
+    label: 'Analytics Dashboard',
+    prompt: 'Build an analytics dashboard with a stats overview showing 4 metric cards (revenue, users, orders, growth), a chart placeholder, and a recent activity feed showing user actions.'
+  },
+  {
+    emoji: '🛒',
+    label: 'Product Page',
+    prompt: 'Build an e-commerce product page with product image, title, price with discount, size selector buttons, add to cart button, and a customer reviews section with star ratings.'
+  },
+  {
+    emoji: '✨',
+    label: 'Portfolio Hero',
+    prompt: 'Build a creative portfolio hero section with gradient background, large bold headline, social links row, and a "View Work" button with hover effects.'
+  },
 ];
 
 interface ProjectsPageProps {

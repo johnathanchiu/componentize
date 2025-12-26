@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 import { useGenerationStore } from '@/store/generationStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useCanvasStore } from '@/store/canvasStore';
+import { useLayoutStore } from '@/store/layoutStore';
 import type { StreamEvent } from '@/shared/types';
 
 /**
@@ -21,6 +22,7 @@ export function useBlockAccumulator() {
   const generationStoreRef = useRef(useGenerationStore.getState);
   const projectStoreRef = useRef(useProjectStore.getState);
   const canvasStoreRef = useRef(useCanvasStore.getState);
+  const layoutStoreRef = useRef(useLayoutStore.getState);
 
   /**
    * Process a single stream event
@@ -29,6 +31,7 @@ export function useBlockAccumulator() {
     const genStore = generationStoreRef.current();
     const projStore = projectStoreRef.current();
     const canvasStore = canvasStoreRef.current();
+    const layoutStore = layoutStoreRef.current();
 
     switch (event.type) {
       case 'thinking':
@@ -51,7 +54,7 @@ export function useBlockAccumulator() {
       case 'tool_result':
         genStore.setToolResult(event.id, event.success ? 'success' : 'error', event.output);
 
-        // Handle embedded canvas update
+        // Handle embedded canvas update (single component - backward compat)
         if (event.canvas) {
           projStore.addAvailableComponent({ name: event.canvas.componentName, filepath: '' });
           canvasStore.add(event.canvas);
@@ -59,9 +62,28 @@ export function useBlockAccumulator() {
           genStore.setCurrentComponentName(event.canvas.componentName);
         }
 
+        // Handle multiple canvas updates (for section recalculation)
+        if (event.canvasUpdates) {
+          for (const component of event.canvasUpdates) {
+            projStore.addAvailableComponent({ name: component.componentName, filepath: '' });
+            canvasStore.addOrUpdate(component);
+            genStore.incrementComponentVersion(component.componentName);
+          }
+          // Set current component to the last one in the update
+          const lastComponent = event.canvasUpdates[event.canvasUpdates.length - 1];
+          if (lastComponent) {
+            genStore.setCurrentComponentName(lastComponent.componentName);
+          }
+        }
+
         // Handle embedded todo update
         if (event.todos) {
           genStore.setAgentTodos(event.todos);
+        }
+
+        // Handle embedded layout update
+        if (event.layout) {
+          layoutStore.setLayout(event.layout);
         }
         break;
 
@@ -127,6 +149,13 @@ export function useBlockAccumulator() {
     genStore.setStreamStatus('thinking');
     genStore.setCurrentComponentName('components');
 
+    // Start an assistant message for the in-progress turn if last message isn't already streaming
+    const messages = genStore.conversationMessages;
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage || lastMessage.type !== 'assistant' || !lastMessage.isStreaming) {
+      genStore.startAssistantMessage();
+    }
+
     try {
       // Subscribe from event 0 to replay all buffered events
       const stream = subscribeToStream(projectId, 0);
@@ -134,9 +163,13 @@ export function useBlockAccumulator() {
     } catch (err) {
       // Buffer gone (404) or other error - that's fine, disk history is already loaded
       console.log('Buffer expired or error, using disk history:', err);
-      genStore.setStreamStatus('idle');
     } finally {
       genStore.setIsGenerating(false);
+      // Reset status if still thinking (stream ended without complete event)
+      const currentStatus = useGenerationStore.getState().streamStatus;
+      if (currentStatus === 'thinking') {
+        genStore.setStreamStatus('idle');
+      }
     }
   }, [handleStream]);
 

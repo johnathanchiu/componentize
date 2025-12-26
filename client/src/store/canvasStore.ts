@@ -52,6 +52,7 @@ interface CanvasActions {
   // Components
   setComponents: (components: CanvasComponent[], projectId: string) => void;
   add: (component: CanvasComponent) => void;
+  addOrUpdate: (component: CanvasComponent) => void;
   remove: (id: string) => void;
   updatePosition: (id: string, x: number, y: number) => void;
   updateSize: (id: string, width: number, height: number, x?: number, y?: number) => void;
@@ -109,6 +110,24 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
     get().pushToHistory();
     set((state) => ({ components: [...state.components, component] }));
+  },
+
+  addOrUpdate: (component) => {
+    const existing = get().components.find((c) => c.componentName === component.componentName);
+    if (existing) {
+      // Update existing component's position and size
+      set((state) => ({
+        components: state.components.map((c) =>
+          c.componentName === component.componentName
+            ? { ...c, position: component.position, size: component.size }
+            : c
+        ),
+      }));
+    } else {
+      // Add new component
+      get().pushToHistory();
+      set((state) => ({ components: [...state.components, component] }));
+    }
   },
 
   remove: (id) => {
@@ -258,6 +277,7 @@ export const useCanvasActions = () => useCanvasStore(
     setProjectId: s.setProjectId,
     setComponents: s.setComponents,
     add: s.add,
+    addOrUpdate: s.addOrUpdate,
     remove: s.remove,
     updatePosition: s.updatePosition,
     updateSize: s.updateSize,

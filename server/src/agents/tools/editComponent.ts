@@ -144,7 +144,9 @@ class EditComponentInvocation implements ToolInvocation<EditComponentParams> {
       return {
         success: true,
         output,
-        canvasUpdate: thisComponent ?? { id: '', componentName: name, position, size: componentSize, section },
+        // Return ALL components in the section so client can update their positions
+        canvasUpdates: updatedComponents,
+        layoutUpdate: layout,
       };
     }
 

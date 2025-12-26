@@ -12,7 +12,7 @@ import {
   useComponentVersions,
   useGenerationActions,
 } from '@/store/generationStore';
-import { useStream } from './useStream';
+import { useBlockAccumulator } from './useBlockAccumulator';
 import { useCurrentProject } from '@/store/projectStore';
 import { generateStream, editProjectComponentStream } from '@/lib/api';
 
@@ -24,7 +24,7 @@ import { generateStream, editProjectComponentStream } from '@/lib/api';
  */
 export function useGeneration() {
   const [error, setError] = useState('');
-  const { processEvent, startStream } = useStream();
+  const { handleStream } = useBlockAccumulator();
   const currentProject = useCurrentProject();
 
   // Use typed selector hooks - only re-renders when specific values change
@@ -42,23 +42,18 @@ export function useGeneration() {
   // Actions are stable (functions don't change)
   const actions = useGenerationActions();
 
-  // Core function to handle streaming response
+  // Core function to handle streaming response - delegates to useBlockAccumulator
   const handleStreamResponse = useCallback(async (
     stream: AsyncGenerator<any>,
-    isCreateMode: boolean,
+    _isCreateMode: boolean,
     userPrompt: string
   ) => {
-    startStream(userPrompt);
-
-    for await (const event of stream) {
-      processEvent(event, isCreateMode);
-
-      if (event.type === 'error') {
-        setError(event.message);
-        break;
-      }
+    try {
+      await handleStream(stream, { userPrompt });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Stream error');
     }
-  }, [startStream, processEvent]);
+  }, [handleStream]);
 
   // Generate new components
   const generate = useCallback(async (prompt: string) => {

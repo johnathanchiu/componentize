@@ -30,6 +30,7 @@ class SetPageStyleInvocation implements ToolInvocation<SetPageStyleParams> {
     return {
       success: true,
       output: `Page style updated: ${parts.join(', ')}`,
+      layoutUpdate: layout,
     };
   }
 }

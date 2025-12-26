@@ -396,14 +396,10 @@ export const useGenerationStore = create<GenerationStore>()(
     {
       name: 'componentize-generation',
       partialize: (state) => ({
-        currentProjectId: state.currentProjectId,
+        // NOTE: currentProjectId NOT persisted - URL is source of truth
         // NOTE: conversationMessages NOT persisted - server (disk) is source of truth
-        agentTodos: state.agentTodos,
+        // NOTE: isStreamPanelExpanded NOT persisted - panel should only open for active streams
         componentVersions: state.componentVersions,
-        generationMode: state.generationMode,
-        editingComponentName: state.editingComponentName,
-        currentComponentName: state.currentComponentName,
-        isStreamPanelExpanded: state.isStreamPanelExpanded,
       }),
     }
   )

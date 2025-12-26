@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* Scan server workspace for component classes (Tailwind v4) */
-@source "../server/.workspace/projects/**/*.tsx";
+@source "../../server/.workspace/projects/**/*.tsx";
 
 /* Safelist dynamic color classes for AI-generated components (Tailwind v4.1+) */
 @source inline("{hover:,}bg-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
@@ -24,8 +24,11 @@
 @source inline("flex flex-col flex-row items-{start,center,end,stretch} justify-{start,center,end,between,around,evenly}");
 @source inline("grid grid-cols-{1,2,3,4,5,6,12} grid-rows-{1,2,3,4,5,6}");
 @source inline("gap-{1,2,3,4,5,6,8,10,12,16,20,24}");
-@source inline("text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl}");
-@source inline("font-{normal,medium,semibold,bold}");
+@source inline("text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl,7xl,8xl,9xl}");
+@source inline("font-{thin,extralight,light,normal,medium,semibold,bold,extrabold,black}");
+@source inline("text-{white,black,transparent,current} text-white/{10,20,30,40,50,60,70,80,90}");
+@source inline("tracking-{tighter,tight,normal,wide,wider,widest}");
+@source inline("leading-{none,tight,snug,normal,relaxed,loose}");
 
 /* shadcn/ui CSS variables */
 :root {

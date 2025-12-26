@@ -1,4 +1,4 @@
-import type { CanvasComponent, AgentTodo } from '../../../../shared/types';
+import type { CanvasComponent, AgentTodo, LayoutState } from '../../../../shared/types';
 
 /**
  * Structured tool result - clear success/error with typed side effects
@@ -8,8 +8,10 @@ export interface ToolResult {
   output?: string;           // Success message/data
   error?: string;            // Error message
   // Structured side effects
-  canvasUpdate?: CanvasComponent;
+  canvasUpdate?: CanvasComponent;           // Single component update (backward compat)
+  canvasUpdates?: CanvasComponent[];        // Multiple component updates (for section recalculation)
   todosUpdate?: AgentTodo[];
+  layoutUpdate?: LayoutState;
 }
 
 /**

@@ -119,7 +119,7 @@ export type StreamEvent =
   | { type: 'thinking_signature'; signature: string } // Required for multi-turn conversations
   | { type: 'text'; content: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; id: string; name: string; success: boolean; output?: string; canvas?: CanvasComponent; todos?: AgentTodo[] }
+  | { type: 'tool_result'; id: string; name: string; success: boolean; output?: string; canvas?: CanvasComponent; canvasUpdates?: CanvasComponent[]; todos?: AgentTodo[]; layout?: LayoutState }
   | { type: 'complete'; content?: string }
   | { type: 'error'; message: string }
 
