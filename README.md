@@ -1,13 +1,11 @@
 # Componentize
 
-AI-powered webpage design with a structured DSL that actually works. Unlike AI builders that dump messy code, Componentize gives the AI a **structured toolset**:
+Agentic design tool built on **structured toolsets**:
 - **Section-based layouts** (nav, hero, features, footer)
 - **Auto-positioning and centering** - no manual x/y coordinates
 - **Real React components** with TypeScript + Tailwind
 - **Interactive elements** (modals, drawers, shared state)
 - **Live canvas** - watch components appear as the AI creates them
-
-The AI understands the canvas. No more "fix the layout" loops.
 
 ## Examples
 
