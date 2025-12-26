@@ -1,10 +1,26 @@
-import { useState } from 'react';
-import { layoutDef } from './generated/layout';
+import { useState, useMemo } from 'react';
+import { layoutDef as landingLayout } from './generated/layout';
+import { dashboardLayout } from './generated/layout-dashboard';
+import { ecommerceLayout } from './generated/layout-ecommerce';
 import { componentRegistry } from './generated/registry';
-import { calculatePositions } from './layout-types';
+import { calculatePositions, type LayoutDef } from './layout-types';
+
+const layouts: Record<string, LayoutDef> = {
+  landing: landingLayout,
+  dashboard: dashboardLayout,
+  ecommerce: ecommerceLayout,
+};
 
 function App() {
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Get layout from URL param (default: landing)
+  const layoutName = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('layout') || 'landing';
+  }, []);
+
+  const layoutDef = layouts[layoutName] || landingLayout;
   const positions = calculatePositions(layoutDef);
 
   // Calculate total page height
@@ -53,6 +69,23 @@ function App() {
             </div>
           );
         })}
+      </div>
+
+      {/* Layout Switcher */}
+      <div className="fixed bottom-4 right-4 z-50 flex gap-2">
+        {Object.keys(layouts).map((name) => (
+          <a
+            key={name}
+            href={`?layout=${name}`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              layoutName === name
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-800 text-gray-300 hover:bg-slate-700 border border-slate-600'
+            }`}
+          >
+            {name.charAt(0).toUpperCase() + name.slice(1)}
+          </a>
+        ))}
       </div>
 
       {/* Modal layer */}

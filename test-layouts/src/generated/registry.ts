@@ -11,9 +11,22 @@ import PricingFree from './PricingFree';
 import PricingPro from './PricingPro';
 import PricingEnterprise from './PricingEnterprise';
 import Footer from './Footer';
+// Dashboard components
+import DashboardHeader from './DashboardHeader';
+import StatCardRevenue from './StatCardRevenue';
+import StatCardUsers from './StatCardUsers';
+import StatCardOrders from './StatCardOrders';
+import StatCardGrowth from './StatCardGrowth';
+import ChartPlaceholder from './ChartPlaceholder';
+import ActivityFeed from './ActivityFeed';
+// E-commerce components
+import ProductImage from './ProductImage';
+import ProductDetails from './ProductDetails';
+import ReviewsSection from './ReviewsSection';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const componentRegistry: Record<string, React.ComponentType<any>> = {
+  // Landing page components
   Logo,
   NavLinks,
   SignupBtn,
@@ -27,4 +40,16 @@ export const componentRegistry: Record<string, React.ComponentType<any>> = {
   PricingPro,
   PricingEnterprise,
   Footer,
+  // Dashboard components
+  DashboardHeader,
+  StatCardRevenue,
+  StatCardUsers,
+  StatCardOrders,
+  StatCardGrowth,
+  ChartPlaceholder,
+  ActivityFeed,
+  // E-commerce components
+  ProductImage,
+  ProductDetails,
+  ReviewsSection,
 };
