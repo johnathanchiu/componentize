@@ -65,9 +65,13 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   setAvailableComponents: (components) => set({ availableComponents: components }),
 
   addAvailableComponent: (component) =>
-    set((state) => ({
-      availableComponents: [...state.availableComponents, component],
-    })),
+    set((state) => {
+      // Don't add if already exists (prevents duplicates from section recalculations)
+      if (state.availableComponents.some((c) => c.name === component.name)) {
+        return state;
+      }
+      return { availableComponents: [...state.availableComponents, component] };
+    }),
 
   removeAvailableComponent: (componentName) =>
     set((state) => ({
