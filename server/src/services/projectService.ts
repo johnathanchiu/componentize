@@ -32,6 +32,11 @@ const DEFAULT_LAYOUT_STATE: LayoutState = {
   layers: [],
 };
 
+// Layout constants
+const SECTION_GAP = 40;
+const COMPONENT_GAP = 20;
+const UNKNOWN_SECTION_ORDER = 999;
+
 // Predefined section order for proper page layout (top to bottom)
 const SECTION_ORDER = [
   'nav', 'navbar', 'header',
@@ -46,7 +51,7 @@ const SECTION_ORDER = [
   'footer'
 ];
 
-// Accumulated conversation message (like minecraftlm format)
+// Accumulated conversation message for agent history
 export interface ConversationMessage {
   role: 'user' | 'assistant' | 'tool';
   content: string;
@@ -141,8 +146,7 @@ class ProjectService {
       const metadataPath = this.getProjectMetadataPath(id);
       const content = await fs.readFile(metadataPath, 'utf-8');
       return JSON.parse(content) as Project;
-    } catch (error) {
-      console.warn(`Failed to load project ${id}:`, error);
+    } catch {
       return null;
     }
   }
@@ -168,8 +172,7 @@ class ProjectService {
 
       // Sort by creation date, newest first
       return projects.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    } catch (error) {
-      console.error('Failed to list projects:', error);
+    } catch {
       return [];
     }
   }
@@ -374,9 +377,6 @@ class ProjectService {
     componentName: string
   ): { x: number; y: number } {
     const pageWidth = layout.pageStyle.width;
-    const SECTION_GAP = 40;
-    const COMPONENT_GAP = 20;
-
     let currentY = 0;
 
     for (const section of layout.sections) {
@@ -440,15 +440,13 @@ class ProjectService {
   private getSectionOrderIndex(sectionName: string): number {
     const lowerName = sectionName.toLowerCase();
     const index = SECTION_ORDER.findIndex(s => lowerName.includes(s) || s.includes(lowerName));
-    return index >= 0 ? index : 999; // Unknown sections go at the end
+    return index >= 0 ? index : UNKNOWN_SECTION_ORDER;
   }
 
   /**
    * Calculate section height
    */
   private calculateSectionHeight(section: Section): number {
-    const COMPONENT_GAP = 20;
-
     if (section.layout === 'column') {
       return section.components.reduce((sum, c, i) => {
         return sum + c.size.height + (i > 0 ? (c.gap ?? COMPONENT_GAP) : 0);

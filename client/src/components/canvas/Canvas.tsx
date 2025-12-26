@@ -311,24 +311,10 @@ function CanvasInner() {
       link.download = `canvas-${currentProject?.id || 'export'}.png`;
       link.href = dataUrl;
       link.click();
-      console.log('[Canvas] Image exported');
-    } catch (err) {
-      console.error('[Canvas] Failed to export image:', err);
+    } catch {
+      // Image export failed silently
     }
   }, [getNodes, currentProject]);
-
-  // Debug state exposure
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      (window as any).__CANVAS_DEBUG__ = {
-        nodes,
-        edges,
-        components,
-        downloadImage,
-        currentProject,
-      };
-    }
-  }, [nodes, edges, components, downloadImage, currentProject]);
 
   const hasConnections = connections.length > 0;
   const hasContent = components.length > 0;

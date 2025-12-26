@@ -60,8 +60,10 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
         setLoading(false);
       })
       .catch((err) => {
-        if (err.name === 'AbortError') return;
-        console.error('Failed to load component:', err);
+        if (err.name === 'AbortError') {
+          setLoading(false);
+          return;
+        }
         setComponentError({ message: err.message, stack: err.stack });
         setLoading(false);
       });

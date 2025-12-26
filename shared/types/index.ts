@@ -109,6 +109,7 @@ export interface ExportFile {
 export interface AgentTodo {
   id: string;
   content: string;
+  activeForm: string;
   status: 'pending' | 'in_progress' | 'completed';
 }
 

@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import type { BaseTool, ToolResult, ToolContext, ToolInvocation, ToolSchema } from './base';
 import { makeToolSchema } from './base';
 import type { AgentTodo } from '../../../../shared/types';
@@ -27,8 +28,8 @@ class UpdateTodosInvocation implements ToolInvocation<UpdateTodosParams> {
 
     // Handle 'set' - replace entire list
     if (set && set.length > 0) {
-      todos = set.map((content, index) => ({
-        id: `todo-${Date.now()}-${index}`,
+      todos = set.map((content) => ({
+        id: uuidv4(),
         content,
         status: 'pending' as const,
         activeForm: content,

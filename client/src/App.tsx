@@ -40,14 +40,14 @@ function App() {
       // THEN if task is running, resume stream (appends in-progress events)
       // Disk and buffer are mutually exclusive - disk has past, buffer has present
       if (result.taskStatus === 'running') {
+        // Small delay to ensure project state is set before resuming stream
         setTimeout(() => {
           resumeStream(projectId);
         }, 100);
       }
 
       return result;
-    } catch (error) {
-      console.error('Failed to load project:', error);
+    } catch {
       return null;
     }
   };

@@ -1,4 +1,4 @@
-import type { PageLayout, StreamEvent } from '@/shared/types';
+import type { PageLayout, StreamEvent, LayoutState } from '@/shared/types';
 import type { Project } from '@/store/projectStore';
 import type { ServerConversationMessage } from '@/store/generationStore';
 import { config } from '@/config';
@@ -240,6 +240,7 @@ export interface ProjectResponse {
   project: Project;
   components: { name: string; filepath: string }[];
   canvas: CanvasComponentData[];
+  layout?: LayoutState;
   history: ServerConversationMessage[];
   taskStatus: 'idle' | 'running' | 'complete' | 'error';
   eventCount: number;
