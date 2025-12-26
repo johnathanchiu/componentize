@@ -1,5 +1,32 @@
 @import "tailwindcss";
 
+/* Scan server workspace for component classes (Tailwind v4) */
+@source "../server/.workspace/projects/**/*.tsx";
+
+/* Safelist dynamic color classes for AI-generated components (Tailwind v4.1+) */
+@source inline("{hover:,}bg-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("{hover:,}text-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("{hover:,}border-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("from-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("to-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("via-{indigo,purple,blue,green,red,yellow,orange,pink,gray,slate,zinc,neutral,cyan,sky,violet,fuchsia,rose,amber,lime,emerald,teal,stone}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("bg-gradient-to-{r,l,t,b,tr,tl,br,bl}");
+@source inline("bg-clip-text text-transparent");
+
+/* Safelist sizing classes that might not be detected from external paths */
+@source inline("w-{1,2,3,4,5,6,8,10,12,14,16,20,24,32,40,48,56,64,72,80,96}");
+@source inline("h-{1,2,3,4,5,6,8,10,12,14,16,20,24,32,40,48,56,64,72,80,96}");
+@source inline("w-full h-full w-auto h-auto");
+@source inline("p-{1,2,3,4,5,6,8,10,12,16,20,24} px-{1,2,3,4,5,6,8,10,12,16,20,24} py-{1,2,3,4,5,6,8,10,12,16,20,24}");
+@source inline("m-{1,2,3,4,5,6,8,10,12,16,20,24} mx-{1,2,3,4,5,6,8,10,12,16,20,24} my-{1,2,3,4,5,6,8,10,12,16,20,24}");
+@source inline("mb-{1,2,3,4,5,6,8,10,12,16,20,24} mt-{1,2,3,4,5,6,8,10,12,16,20,24}");
+@source inline("rounded rounded-{sm,md,lg,xl,2xl,3xl,full}");
+@source inline("flex flex-col flex-row items-{start,center,end,stretch} justify-{start,center,end,between,around,evenly}");
+@source inline("grid grid-cols-{1,2,3,4,5,6,12} grid-rows-{1,2,3,4,5,6}");
+@source inline("gap-{1,2,3,4,5,6,8,10,12,16,20,24}");
+@source inline("text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl}");
+@source inline("font-{normal,medium,semibold,bold}");
+
 /* shadcn/ui CSS variables */
 :root {
   --background: 0 0% 100%;
@@ -29,13 +56,12 @@ body {
   min-height: 100vh;
 }
 
-/* Make React Flow component nodes transparent and shrink to content */
+/* Make React Flow component nodes transparent and sized to content */
 .react-flow__node-component {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
-  /* Shrink to content size - no !important so inline style can override after resize */
   width: fit-content;
   height: fit-content;
 }

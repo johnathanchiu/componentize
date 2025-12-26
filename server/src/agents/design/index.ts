@@ -1,7 +1,15 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { BaseAgent } from '../base';
 import type { StreamEvent } from '../../../../shared/types';
-import { ToolRegistry, EditComponentTool, ReadComponentTool, ManageTodosTool, GetLayoutTool } from '../tools';
+import {
+  ToolRegistry,
+  EditComponentTool,
+  ReadComponentTool,
+  ManageTodosTool,
+  GetLayoutTool,
+  SetPageStyleTool,
+  CreateLayerTool,
+} from '../tools';
 import { SYSTEM_PROMPT } from './prompt';
 import { projectService, ConversationMessage } from '../../services/projectService';
 
@@ -14,6 +22,8 @@ function createDesignToolRegistry(): ToolRegistry {
     new ReadComponentTool(),
     new ManageTodosTool(),
     new GetLayoutTool(),
+    new SetPageStyleTool(),
+    new CreateLayerTool(),
   ]);
 }
 
@@ -35,8 +45,8 @@ export class DesignAgent extends BaseAgent {
         // Reconstruct assistant message with proper content blocks
         const content: Anthropic.ContentBlockParam[] = [];
 
-        if (msg.thinking) {
-          content.push({ type: 'thinking', thinking: msg.thinking, signature: '' });
+        if (msg.thinking && msg.thinkingSignature) {
+          content.push({ type: 'thinking', thinking: msg.thinking, signature: msg.thinkingSignature });
         }
         if (msg.content) {
           content.push({ type: 'text', text: msg.content });

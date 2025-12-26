@@ -1,6 +1,8 @@
 /** @type {import('tailwindcss').Config} */
+// NOTE: Tailwind v4 uses CSS-first configuration.
+// Content scanning and safelist are configured in src/index.css via @source directives.
+// This file is only used for theme extensions.
 export default {
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {

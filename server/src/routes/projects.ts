@@ -37,10 +37,11 @@ export function registerProjectRoutes(server: FastifyInstance) {
       return reply.code(404).send({ error: 'Project not found' });
     }
 
-    const [componentsResult, canvas, history] = await Promise.all([
+    const [componentsResult, canvas, history, layout] = await Promise.all([
       fileService.listProjectComponents(id),
       projectService.getCanvas(id),
       projectService.getHistory(id),
+      projectService.getLayout(id),
     ]);
 
     // Get task status for stream resumption on page refresh
@@ -51,6 +52,7 @@ export function registerProjectRoutes(server: FastifyInstance) {
       components: componentsResult.components || [],
       canvas: canvas || [],
       history: history || [],
+      layout,
       taskStatus,
       eventCount,
     };

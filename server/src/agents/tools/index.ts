@@ -5,3 +5,5 @@ export { EditComponentTool } from './editComponent';
 export { ReadComponentTool } from './readComponent';
 export { ManageTodosTool } from './manageTodos';
 export { GetLayoutTool } from './getLayout';
+export { SetPageStyleTool } from './setPageStyle';
+export { CreateLayerTool } from './createLayer';

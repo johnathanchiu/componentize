@@ -6,3 +6,6 @@ dist
 server/.workspace
 server/.components
 server/.pages
+
+# Test output
+test-layouts/test-results/
