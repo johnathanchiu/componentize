@@ -135,8 +135,9 @@ When writing React components:
     for await (const event of stream) {
       // Thinking block start - capture and yield signature for history storage
       if (event.type === 'content_block_start' && event.content_block.type === 'thinking') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        thinkingSignature = (event.content_block as any).signature;
+        // The SDK types don't include 'signature' on ThinkingBlock, but it's present at runtime
+        const thinkingBlock = event.content_block as { type: 'thinking'; thinking: string; signature?: string };
+        thinkingSignature = thinkingBlock.signature;
         if (thinkingSignature) {
           yield { type: 'thinking_signature', signature: thinkingSignature };
         }

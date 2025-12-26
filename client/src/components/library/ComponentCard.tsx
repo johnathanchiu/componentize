@@ -1,42 +1,9 @@
 import { useState, useEffect, useRef, type ComponentType } from 'react';
-import React from 'react';
 import { Trash2, Wrench } from 'lucide-react';
 import { useGenerationStore } from '@/store/generationStore';
 import { loadComponent } from '@/lib/componentRenderer';
+import { ComponentErrorBoundary } from '@/components/canvas/ErrorBoundary';
 import type { Size } from '@/shared/types';
-
-// Error boundary for component previews
-interface ErrorBoundaryProps {
-  children: React.ReactNode;
-  fallback: React.ReactNode;
-  onError?: (error: Error) => void;
-}
-
-interface ErrorBoundaryState {
-  hasError: boolean;
-}
-
-class ComponentErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(): ErrorBoundaryState {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error): void {
-    this.props.onError?.(error);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback;
-    }
-    return this.props.children;
-  }
-}
 
 interface ComponentCardProps {
   name: string;

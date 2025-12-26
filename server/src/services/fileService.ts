@@ -5,7 +5,7 @@ import { projectService } from './projectService';
 export interface ComponentResponse {
   status: 'success' | 'error';
   message: string;
-  component_name?: string;
+  componentName?: string;
   filepath?: string;
   content?: string;
 }
@@ -99,7 +99,7 @@ class FileService {
       return {
         status: 'success',
         message: `Component '${name}' created successfully`,
-        component_name: name,
+        componentName: name,
         filepath,
         content: code,
       };
@@ -137,7 +137,7 @@ class FileService {
       return {
         status: 'success',
         message: `Component '${name}' updated successfully`,
-        component_name: name,
+        componentName: name,
         filepath,
         content: code,
       };
@@ -161,7 +161,7 @@ class FileService {
       return {
         status: 'success',
         message: `Component '${name}' read successfully`,
-        component_name: name,
+        componentName: name,
         filepath,
         content,
       };
@@ -214,7 +214,7 @@ class FileService {
       return {
         status: 'success',
         message: `Component '${name}' deleted successfully`,
-        component_name: name,
+        componentName: name,
       };
     } catch (error) {
       return {

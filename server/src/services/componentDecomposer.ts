@@ -228,18 +228,20 @@ function collectUsedIdentifiers(node: t.JSXElement): Set<string> {
       identifiers.add(n.name);
     }
 
-    // Recursively visit children
-    for (const key of Object.keys(n)) {
-      const child = (n as any)[key];
+    // Recursively visit children - use Object.entries for type-safe iteration
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nodeRecord = n as Record<string, any>;
+    for (const key of Object.keys(nodeRecord)) {
+      const child = nodeRecord[key];
       if (child && typeof child === 'object') {
         if (Array.isArray(child)) {
-          child.forEach((c) => {
-            if (c && typeof c === 'object' && 'type' in c) {
-              visit(c);
+          child.forEach((c: unknown) => {
+            if (c && typeof c === 'object' && 'type' in c && t.isNode(c as t.Node)) {
+              visit(c as t.Node);
             }
           });
-        } else if ('type' in child) {
-          visit(child);
+        } else if ('type' in child && t.isNode(child as t.Node)) {
+          visit(child as t.Node);
         }
       }
     }

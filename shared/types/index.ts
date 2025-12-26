@@ -80,7 +80,7 @@ export interface APIResponse {
 }
 
 export interface ComponentResponse extends APIResponse {
-  component_name?: string;
+  componentName?: string;
   filepath?: string;
   content?: string;
 }

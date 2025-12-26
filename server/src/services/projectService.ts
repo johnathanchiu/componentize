@@ -146,7 +146,11 @@ class ProjectService {
       const metadataPath = this.getProjectMetadataPath(id);
       const content = await fs.readFile(metadataPath, 'utf-8');
       return JSON.parse(content) as Project;
-    } catch {
+    } catch (error) {
+      // Debug log for troubleshooting - not found is expected, other errors are not
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.debug(`Failed to read project ${id}:`, error);
+      }
       return null;
     }
   }
@@ -172,7 +176,8 @@ class ProjectService {
 
       // Sort by creation date, newest first
       return projects.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    } catch {
+    } catch (error) {
+      console.debug('Failed to list projects:', error);
       return [];
     }
   }
@@ -216,7 +221,11 @@ class ProjectService {
         return parsed;
       }
       return parsed.components || [];
-    } catch {
+    } catch (error) {
+      // Canvas not found is expected for new projects
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.debug(`Failed to read canvas for project ${projectId}:`, error);
+      }
       return [];
     }
   }
@@ -237,7 +246,11 @@ class ProjectService {
       const layoutPath = this.getLayoutPath(projectId);
       const content = await fs.readFile(layoutPath, 'utf-8');
       return JSON.parse(content) as LayoutState;
-    } catch {
+    } catch (error) {
+      // Layout not found is expected for new projects
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.debug(`Failed to read layout for project ${projectId}:`, error);
+      }
       return { ...DEFAULT_LAYOUT_STATE };
     }
   }

@@ -31,6 +31,10 @@ import type { Layer } from '@/shared/types';
 import { ComponentNode, type ComponentNodeData } from './ComponentNode';
 import { PAGE_WIDTHS, type PageWidthPreset } from '@/types/index';
 
+// Node data types for the canvas
+type ArtboardNodeData = { width: number; height: number; background: string };
+type CanvasNodeData = ComponentNodeData | ArtboardNodeData;
+
 // Helper to get page width from pageStyle
 function getPageWidth(width: number | PageWidthPreset | undefined): number {
   if (!width) return PAGE_WIDTHS.desktop;
@@ -148,7 +152,7 @@ function CanvasInner() {
   }, [components, currentProject, selectedId, startFixing, pageWidth, pageBackground]);
 
   // ReactFlow local state
-  const [nodes, setNodes] = useState<Node<any>[]>([]);
+  const [nodes, setNodes] = useState<Node<CanvasNodeData>[]>([]);
 
   // Sync derived nodes → ReactFlow state
   useEffect(() => {

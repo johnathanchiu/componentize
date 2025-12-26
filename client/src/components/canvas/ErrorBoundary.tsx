@@ -2,7 +2,11 @@ import React from 'react';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
-  onError: (error: Error) => void;
+  /** Called when an error is caught */
+  onError?: (error: Error) => void;
+  /** Optional fallback UI to show on error. If not provided, returns null */
+  fallback?: React.ReactNode;
+  /** When this key changes, the error state resets (for retrying after fixes) */
   resetKey?: number;
 }
 
@@ -10,6 +14,10 @@ interface ErrorBoundaryState {
   hasError: boolean;
 }
 
+/**
+ * Error boundary for React components.
+ * Can be used with a fallback UI or to silently catch errors and delegate to parent.
+ */
 export class ComponentErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
@@ -21,7 +29,7 @@ export class ComponentErrorBoundary extends React.Component<ErrorBoundaryProps, 
   }
 
   componentDidCatch(error: Error) {
-    this.props.onError(error);
+    this.props.onError?.(error);
   }
 
   componentDidUpdate(prevProps: ErrorBoundaryProps) {
@@ -33,7 +41,7 @@ export class ComponentErrorBoundary extends React.Component<ErrorBoundaryProps, 
 
   render() {
     if (this.state.hasError) {
-      return null; // Error overlay will be shown by parent
+      return this.props.fallback ?? null;
     }
     return this.props.children;
   }

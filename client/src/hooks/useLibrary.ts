@@ -24,7 +24,7 @@ export function useLibrary() {
   const { setAvailableComponents } = useProjectActions();
   const { startFixing } = useGenerationActions();
 
-  const brokenCount = brokenComponents.size;
+  const brokenCount = Object.keys(brokenComponents).length;
   const hasComponents = components.length > 0;
 
   // Refresh component list from server
@@ -60,7 +60,7 @@ export function useLibrary() {
 
   // Fix all broken components
   const fixAll = useCallback(() => {
-    const brokenList = Array.from(brokenComponents.entries());
+    const brokenList = Object.entries(brokenComponents);
     if (brokenList.length === 0) return;
 
     const [firstName, firstError] = brokenList[0];

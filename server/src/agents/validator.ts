@@ -181,9 +181,3 @@ export function validateComponent(code: string, componentName: string): string |
   }
 }
 
-/**
- * Get list of all allowed scope keys (for documentation/debugging)
- */
-export function getAllowedScopeKeys(): string[] {
-  return [...ALLOWED_SCOPE_KEYS];
-}

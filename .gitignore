@@ -9,3 +9,22 @@ server/.pages
 
 # Test output
 test-layouts/test-results/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local config
+.env.local
+.env.*.local

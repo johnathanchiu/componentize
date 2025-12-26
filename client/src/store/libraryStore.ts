@@ -6,8 +6,8 @@ interface LibraryState {
   // Available components in the current project
   components: Component[];
 
-  // Broken components that need fixing
-  brokenComponents: Map<string, string>;
+  // Broken components that need fixing (componentName -> error message)
+  brokenComponents: Record<string, string>;
 }
 
 interface LibraryActions {
@@ -26,7 +26,7 @@ export type LibraryStore = LibraryState & LibraryActions;
 export const useLibraryStore = create<LibraryStore>((set) => ({
   // State
   components: [],
-  brokenComponents: new Map(),
+  brokenComponents: {},
 
   // Actions
   setComponents: (components) => set({ components }),
@@ -38,28 +38,26 @@ export const useLibraryStore = create<LibraryStore>((set) => ({
 
   removeComponent: (componentName) =>
     set((state) => {
-      const newBroken = new Map(state.brokenComponents);
-      newBroken.delete(componentName);
+      const { [componentName]: _, ...restBroken } = state.brokenComponents;
       return {
         components: state.components.filter((c) => c.name !== componentName),
-        brokenComponents: newBroken,
+        brokenComponents: restBroken,
       };
     }),
 
   // Broken component tracking
   setBroken: (componentName, error) =>
     set((state) => ({
-      brokenComponents: new Map(state.brokenComponents).set(componentName, error),
+      brokenComponents: { ...state.brokenComponents, [componentName]: error },
     })),
 
   clearBroken: (componentName) =>
     set((state) => {
-      const newBroken = new Map(state.brokenComponents);
-      newBroken.delete(componentName);
-      return { brokenComponents: newBroken };
+      const { [componentName]: _, ...restBroken } = state.brokenComponents;
+      return { brokenComponents: restBroken };
     }),
 
-  clearAllBroken: () => set({ brokenComponents: new Map() }),
+  clearAllBroken: () => set({ brokenComponents: {} }),
 }));
 
 // ============================================================================
