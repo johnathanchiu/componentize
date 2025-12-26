@@ -29,8 +29,6 @@ echo "ANTHROPIC_API_KEY=your_key_here" > .env
 npm run dev  # Starts server on :5001 and client on :5173
 ```
 
-Open http://localhost:5173 and try: *"Build a SaaS landing page with navbar, hero section, 3 feature cards, pricing tiers, and footer"*
-
 ## How It Works
 
 ### The Design Agent DSL
@@ -238,12 +236,3 @@ The canvas engine then:
 3. Centers everything appropriately
 
 Result: Consistent, professional layouts every time.
-
-### Why Streaming?
-
-AI operations take 10-30 seconds. Users need feedback. We stream:
-- Thinking tokens (so users see the AI reasoning)
-- Tool calls (so users see what's being created)
-- Canvas updates (so components appear in real-time)
-
-Every tool result can include canvas and layout updates that the client applies immediately.
