@@ -1,10 +1,6 @@
 # Componentize
 
-AI-powered webpage design with a structured DSL that actually works.
-
-## What Makes This Different
-
-Unlike AI builders that dump messy code, Componentize gives the AI a **structured toolset**:
+AI-powered webpage design with a structured DSL that actually works. Unlike AI builders that dump messy code, Componentize gives the AI a **structured toolset**:
 - **Section-based layouts** (nav, hero, features, footer)
 - **Auto-positioning and centering** - no manual x/y coordinates
 - **Real React components** with TypeScript + Tailwind
@@ -22,7 +18,7 @@ cd componentize
 npm install
 
 # Set your API key
-echo "ANTHROPIC_API_KEY=your_key_here" > server/.env
+echo "ANTHROPIC_API_KEY=your_key_here" > .env
 
 # Start both servers
 npm run dev  # Starts server on :5001 and client on :5173
@@ -206,33 +202,6 @@ POST /api/projects/:id/export         # Export as ZIP
 **E-commerce:**
 > "Build a product page with large product image, title, price, size selector buttons, add to cart button, and customer reviews section."
 
-## Development
-
-```bash
-# Run both servers with hot reload
-npm run dev
-
-# Build for production
-npm run build
-
-# Run tests
-npm test
-```
-
-### Environment Variables
-
-**server/.env:**
-```env
-ANTHROPIC_API_KEY=sk-ant-...
-NODE_ENV=development
-PORT=5001
-```
-
-**client/.env:**
-```env
-VITE_API_BASE_URL=http://localhost:5001
-```
-
 ## Architecture Decisions
 
 ### Why a DSL Instead of Free-Form Code?
@@ -273,7 +242,3 @@ AI operations take 10-30 seconds. Users need feedback. We stream:
 - Canvas updates (so components appear in real-time)
 
 Every tool result can include canvas and layout updates that the client applies immediately.
-
-## License
-
-MIT
