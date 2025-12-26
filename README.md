@@ -9,6 +9,13 @@ AI-powered webpage design with a structured DSL that actually works. Unlike AI b
 
 The AI understands the canvas. No more "fix the layout" loops.
 
+## Examples
+
+| SaaS Landing Page | Analytics Dashboard |
+|:-----------------:|:-------------------:|
+| ![SaaS Landing Page](examples/saas-landing.png) | ![Analytics Dashboard](examples/analytics-dashboard.png) |
+| Complete marketing site with navbar, hero, features, pricing, and footer | Dashboard with stat cards, charts, and activity feed |
+
 ## Quick Start
 
 ```bash
