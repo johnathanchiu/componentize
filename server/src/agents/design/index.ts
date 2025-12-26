@@ -45,8 +45,8 @@ export class DesignAgent extends BaseAgent {
         // Reconstruct assistant message with proper content blocks
         const content: Anthropic.ContentBlockParam[] = [];
 
-        if (msg.thinking) {
-          content.push({ type: 'thinking', thinking: msg.thinking, signature: '' });
+        if (msg.thinking && msg.thinkingSignature) {
+          content.push({ type: 'thinking', thinking: msg.thinking, signature: msg.thinkingSignature });
         }
         if (msg.content) {
           content.push({ type: 'text', text: msg.content });

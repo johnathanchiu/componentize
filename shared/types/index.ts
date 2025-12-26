@@ -115,6 +115,7 @@ export interface AgentTodo {
 // Streaming Events - Discriminated Union
 export type StreamEvent =
   | { type: 'thinking'; content: string }
+  | { type: 'thinking_signature'; signature: string } // Required for multi-turn conversations
   | { type: 'text'; content: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; id: string; name: string; success: boolean; output?: string; canvas?: CanvasComponent; todos?: AgentTodo[] }

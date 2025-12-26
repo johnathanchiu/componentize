@@ -12,6 +12,7 @@ interface ToolCall {
 interface StreamResult {
   response: Anthropic.Message;
   toolCalls: ToolCall[];
+  thinkingSignature?: string;
 }
 
 /**
@@ -119,7 +120,7 @@ When writing React components:
       max_tokens: appConfig.api.maxTokens,
       system: this.systemPrompt,
       tools: this.getToolSchemas(),
-      tool_choice: { type: 'auto' },
+      tool_choice: { type: 'auto', disable_parallel_tool_use: true },
       messages,
       thinking: {
         type: 'enabled',
@@ -129,8 +130,18 @@ When writing React components:
 
     const toolCalls: ToolCall[] = [];
     let currentTool: { id: string; name: string; input: string } | null = null;
+    let thinkingSignature: string | undefined;
 
     for await (const event of stream) {
+      // Thinking block start - capture and yield signature for history storage
+      if (event.type === 'content_block_start' && event.content_block.type === 'thinking') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        thinkingSignature = (event.content_block as any).signature;
+        if (thinkingSignature) {
+          yield { type: 'thinking_signature', signature: thinkingSignature };
+        }
+      }
+
       // Tool use start
       if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
         currentTool = { id: event.content_block.id, name: event.content_block.name, input: '' };
@@ -161,7 +172,7 @@ When writing React components:
       }
     }
 
-    return { response: await stream.finalMessage(), toolCalls };
+    return { response: await stream.finalMessage(), toolCalls, thinkingSignature };
   }
 
   /**

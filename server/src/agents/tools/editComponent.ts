@@ -74,21 +74,26 @@ class EditComponentInvocation implements ToolInvocation<EditComponentParams> {
       };
     }
 
-    // Write component to file
-    const result = await fileService.createProjectComponent(projectId, name, code);
-    if (result.status !== 'success') {
-      return {
-        success: false,
-        error: result.message,
-      };
-    }
-
     // Determine component size
     const componentSize = size ?? inferSize(name);
 
     // Check if component already exists on canvas
     const canvas = await projectService.getCanvas(projectId);
     const existing = canvas.find(c => c.componentName === name);
+
+    // Check if component file already exists (might not be on canvas)
+    const componentExists = await fileService.componentExists(projectId, name);
+
+    // Write component to file - use update if exists, create if new
+    const result = componentExists
+      ? await fileService.updateProjectComponent(projectId, name, code)
+      : await fileService.createProjectComponent(projectId, name, code);
+    if (result.status !== 'success') {
+      return {
+        success: false,
+        error: result.message,
+      };
+    }
 
     if (section) {
       // Section-based layout

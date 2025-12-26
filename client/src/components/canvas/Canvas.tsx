@@ -24,8 +24,10 @@ import {
 import { useCanvasKeyboard } from '@/hooks/useKeyboard';
 import { useGenerationActions } from '@/store/generationStore';
 import { useCurrentProject } from '@/store/projectStore';
-import { usePageStyle } from '@/store/layoutStore';
-import { groupConnectionsByKey, generateConnectionColors } from '@/lib/sharedStore';
+import { usePageStyle, useLayers } from '@/store/layoutStore';
+import { groupConnectionsByKey, generateConnectionColors, useSharedState } from '@/lib/sharedStore';
+import { LayerOverlay } from './LayerOverlay';
+import type { Layer } from '@/shared/types';
 import { ComponentNode, type ComponentNodeData } from './ComponentNode';
 import { PAGE_WIDTHS, type PageWidthPreset } from '@/types/index';
 
@@ -57,10 +59,21 @@ const nodeTypes = {
   artboard: ArtboardNode,
 };
 
+// Wrapper that subscribes to a specific layer's open state
+function LayerRenderer({ layer, projectId }: { layer: Layer; projectId: string }) {
+  const stateKey = `${layer.name}_open`;
+  const [isOpen] = useSharedState(stateKey, false);
+
+  if (!isOpen || !layer.components[0]) return null;
+
+  return <LayerOverlay layer={layer} projectId={projectId} stateKey={stateKey} />;
+}
+
 function CanvasInner() {
   const { screenToFlowPosition, getNodes } = useReactFlow();
   const currentProject = useCurrentProject();
   const pageStyle = usePageStyle();
+  const layers = useLayers();
   const { isDragModeActive } = useCanvasKeyboard();
 
   // Use typed selector hooks for optimal re-rendering
@@ -420,6 +433,12 @@ function CanvasInner() {
           </button>
         )}
       </div>
+
+      {/* Render layers (modals, drawers, popovers) - each subscribes to its own state */}
+      {currentProject &&
+        layers.map((layer) => (
+          <LayerRenderer key={layer.name} layer={layer} projectId={currentProject.id} />
+        ))}
     </div>
   );
 }

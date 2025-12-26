@@ -82,7 +82,7 @@ function ComponentNodeInner({ data, selected }: NodeProps & { data: ComponentNod
     }
   };
 
-  // Container style - use size from layout, no overflow clipping
+  // Container style - use size from layout
   const containerStyle: React.CSSProperties = data.targetSize
     ? {
         width: data.targetSize.width,

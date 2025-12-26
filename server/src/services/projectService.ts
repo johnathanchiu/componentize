@@ -53,6 +53,7 @@ export interface ConversationMessage {
   timestamp: number;
   // Assistant-specific fields
   thinking?: string;
+  thinkingSignature?: string; // Required by Anthropic API for multi-turn
   toolCalls?: Array<{
     id: string;
     name: string;
@@ -493,10 +494,18 @@ class ProjectService {
     let currentAssistant: ConversationMessage | null = null;
     let accumulatedThinking = '';
     let accumulatedText = '';
+    let thinkingSignature = '';
     const toolCalls: Map<string, NonNullable<ConversationMessage['toolCalls']>[number]> = new Map();
 
     for (const event of events) {
       switch (event.type) {
+        case 'thinking_signature':
+          if (!currentAssistant) {
+            currentAssistant = { role: 'assistant', content: '', timestamp: Date.now() };
+          }
+          thinkingSignature = event.signature;
+          break;
+
         case 'thinking':
           if (!currentAssistant) {
             currentAssistant = { role: 'assistant', content: '', timestamp: Date.now() };
@@ -534,12 +543,14 @@ class ProjectService {
         case 'complete':
           if (currentAssistant) {
             currentAssistant.thinking = accumulatedThinking || undefined;
+            currentAssistant.thinkingSignature = thinkingSignature || undefined;
             currentAssistant.content = accumulatedText || event.content || '';
             currentAssistant.toolCalls = Array.from(toolCalls.values());
             messages.push(currentAssistant);
             currentAssistant = null;
             accumulatedThinking = '';
             accumulatedText = '';
+            thinkingSignature = '';
             toolCalls.clear();
           }
           break;
@@ -547,12 +558,14 @@ class ProjectService {
         case 'error':
           if (currentAssistant) {
             currentAssistant.thinking = accumulatedThinking || undefined;
+            currentAssistant.thinkingSignature = thinkingSignature || undefined;
             currentAssistant.content = `Error: ${event.message}`;
             currentAssistant.toolCalls = Array.from(toolCalls.values());
             messages.push(currentAssistant);
             currentAssistant = null;
             accumulatedThinking = '';
             accumulatedText = '';
+            thinkingSignature = '';
             toolCalls.clear();
           }
           break;
@@ -562,6 +575,7 @@ class ProjectService {
     // Handle any remaining assistant message
     if (currentAssistant) {
       currentAssistant.thinking = accumulatedThinking || undefined;
+      currentAssistant.thinkingSignature = thinkingSignature || undefined;
       currentAssistant.content = accumulatedText;
       currentAssistant.toolCalls = Array.from(toolCalls.values());
       if (currentAssistant.thinking || currentAssistant.toolCalls.length > 0 || currentAssistant.content) {
