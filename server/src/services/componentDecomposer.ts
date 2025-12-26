@@ -67,6 +67,7 @@ export function decomposeComponent(
 ): DecomposedComponent[] {
   const components: DecomposedComponent[] = [];
   const collectedImports: t.ImportDeclaration[] = [];
+  const collectedDeclarations: Map<string, t.VariableDeclaration> = new Map();
 
   let ast: t.File;
   try {
@@ -86,16 +87,97 @@ export function decomposeComponent(
     },
   });
 
-  // 2. Find the return statement and extract children
+  // 2. Collect all variable declarations from the component function body
+  traverse(ast, {
+    FunctionDeclaration(path) {
+      // Find the main component function
+      path.traverse({
+        VariableDeclaration(varPath) {
+          // Only collect declarations at the function body level (not nested)
+          if (varPath.parent === path.node.body) {
+            for (const declarator of varPath.node.declarations) {
+              // Handle simple identifier: const x = ...
+              if (t.isIdentifier(declarator.id)) {
+                collectedDeclarations.set(
+                  declarator.id.name,
+                  t.variableDeclaration(varPath.node.kind, [t.cloneNode(declarator, true)])
+                );
+              }
+              // Handle array destructuring: const [x, setX] = useSharedState(...)
+              else if (t.isArrayPattern(declarator.id)) {
+                // Create the declaration ONCE and reuse for all identifiers
+                const sharedDecl = t.variableDeclaration(varPath.node.kind, [t.cloneNode(declarator, true)]);
+                for (const element of declarator.id.elements) {
+                  if (t.isIdentifier(element)) {
+                    // Store the same declaration object for each identifier in the pattern
+                    collectedDeclarations.set(element.name, sharedDecl);
+                  }
+                }
+              }
+              // Handle object destructuring: const { x, y } = ...
+              else if (t.isObjectPattern(declarator.id)) {
+                // Create the declaration ONCE and reuse for all identifiers
+                const sharedDecl = t.variableDeclaration(varPath.node.kind, [t.cloneNode(declarator, true)]);
+                for (const prop of declarator.id.properties) {
+                  if (t.isObjectProperty(prop) && t.isIdentifier(prop.value)) {
+                    // Store the same declaration object for each identifier in the pattern
+                    collectedDeclarations.set(prop.value.name, sharedDecl);
+                  }
+                }
+              }
+            }
+          }
+        },
+      });
+    },
+  });
+
+  // 3. Find the return statement and extract children
   traverse(ast, {
     ReturnStatement(path) {
       const arg = path.node.argument;
       if (!t.isJSXElement(arg)) return;
 
       // Get direct JSX children of the root element
-      const children = arg.children.filter(
+      let children = arg.children.filter(
         (child): child is t.JSXElement => t.isJSXElement(child)
       );
+
+      // Find the deepest level with multiple children (most granular decomposition)
+      // This traverses through wrapper divs to find the actual content pieces
+      const findDeepestChildren = (element: t.JSXElement, depth: number = 0): t.JSXElement[] => {
+        if (depth > 5) return []; // Safety limit
+
+        const directChildren = element.children.filter(
+          (child): child is t.JSXElement => t.isJSXElement(child)
+        );
+
+        // If only 1 child that's a div, keep going deeper
+        if (directChildren.length === 1 && getElementName(directChildren[0]) === 'div') {
+          const deeper = findDeepestChildren(directChildren[0], depth + 1);
+          // Only use deeper if it found multiple children
+          if (deeper.length > 1) {
+            return deeper;
+          }
+        }
+
+        // If we have multiple children, check if any div child has MORE children
+        // (prefer the most granular level)
+        if (directChildren.length > 1) {
+          for (const child of directChildren) {
+            if (getElementName(child) === 'div') {
+              const deeper = findDeepestChildren(child, depth + 1);
+              if (deeper.length > directChildren.length) {
+                return deeper;
+              }
+            }
+          }
+        }
+
+        return directChildren;
+      };
+
+      children = findDeepestChildren(arg);
 
       // If only 1 or 0 children, don't decompose
       if (children.length <= 1) {
@@ -108,7 +190,8 @@ export function decomposeComponent(
         const componentName = generateComponentName(originalName, elementName, index, children.length);
         const usedIdentifiers = collectUsedIdentifiers(child);
         const neededImports = filterImportsForIdentifiers(collectedImports, usedIdentifiers);
-        const componentCode = buildComponentCode(componentName, child, neededImports);
+        const neededDeclarations = filterDeclarationsForIdentifiers(collectedDeclarations, usedIdentifiers);
+        const componentCode = buildComponentCode(componentName, child, neededImports, neededDeclarations);
         const estimatedSize = estimateSize(child);
 
         return { child, componentName, componentCode, estimatedSize };
@@ -285,12 +368,100 @@ function filterImportsForIdentifiers(
 }
 
 /**
+ * Collect all identifiers used in a variable declaration's initializer
+ */
+function collectIdentifiersInDeclaration(decl: t.VariableDeclaration): Set<string> {
+  const identifiers = new Set<string>();
+
+  for (const declarator of decl.declarations) {
+    if (declarator.init) {
+      // Simple recursive traversal of the initializer
+      const visit = (n: t.Node) => {
+        if (t.isIdentifier(n)) {
+          identifiers.add(n.name);
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const nodeRecord = n as Record<string, any>;
+        for (const key of Object.keys(nodeRecord)) {
+          const child = nodeRecord[key];
+          if (child && typeof child === 'object') {
+            if (Array.isArray(child)) {
+              child.forEach((c: unknown) => {
+                if (c && typeof c === 'object' && 'type' in c && t.isNode(c as t.Node)) {
+                  visit(c as t.Node);
+                }
+              });
+            } else if ('type' in child && t.isNode(child as t.Node)) {
+              visit(child as t.Node);
+            }
+          }
+        }
+      };
+      visit(declarator.init);
+    }
+  }
+
+  return identifiers;
+}
+
+/**
+ * Filter variable declarations to only those needed for the given identifiers.
+ * Transitively resolves dependencies (if `a` depends on `b`, includes both).
+ * Tracks declarations by reference to avoid duplicates from destructuring
+ * (e.g., const [a, b] = ... stored under both 'a' and 'b').
+ */
+function filterDeclarationsForIdentifiers(
+  declarations: Map<string, t.VariableDeclaration>,
+  usedIdentifiers: Set<string>
+): t.VariableDeclaration[] {
+  const filtered: t.VariableDeclaration[] = [];
+  const addedNames = new Set<string>();
+  const addedDecls = new Set<t.VariableDeclaration>(); // Track by reference
+
+  // Recursively add a declaration and its dependencies
+  const addDeclaration = (name: string) => {
+    if (addedNames.has(name)) return;
+
+    const decl = declarations.get(name);
+    if (!decl) return;
+
+    // First, add any declarations this one depends on
+    const depsInDecl = collectIdentifiersInDeclaration(decl);
+    for (const depName of depsInDecl) {
+      if (declarations.has(depName) && !addedNames.has(depName)) {
+        addDeclaration(depName);
+      }
+    }
+
+    // Mark this name as processed
+    addedNames.add(name);
+
+    // Only add the declaration if we haven't already added this exact object
+    // (handles destructuring where same decl is stored under multiple names)
+    if (!addedDecls.has(decl)) {
+      addedDecls.add(decl);
+      filtered.push(t.cloneNode(decl, true));
+    }
+  };
+
+  // Process all directly used identifiers
+  for (const name of usedIdentifiers) {
+    if (declarations.has(name)) {
+      addDeclaration(name);
+    }
+  }
+
+  return filtered;
+}
+
+/**
  * Build complete component code from JSX element
  */
 function buildComponentCode(
   name: string,
   jsxElement: t.JSXElement,
-  imports: t.ImportDeclaration[]
+  imports: t.ImportDeclaration[],
+  declarations: t.VariableDeclaration[] = []
 ): string {
   // Wrap the JSX in a centered container for canvas compatibility
   // Using flex + items-center + justify-center to maintain centering from parent
@@ -308,15 +479,17 @@ function buildComponentCode(
     [t.cloneNode(jsxElement, true)]
   );
 
+  // Build the function body with declarations + return
+  const functionBody: t.Statement[] = [
+    ...declarations,
+    t.returnStatement(t.parenthesizedExpression(wrappedJsx)),
+  ];
+
   // Build the function component
   const functionDecl = t.functionDeclaration(
     t.identifier(name),
     [],
-    t.blockStatement([
-      t.returnStatement(
-        t.parenthesizedExpression(wrappedJsx)
-      ),
-    ])
+    t.blockStatement(functionBody)
   );
 
   // Add export default

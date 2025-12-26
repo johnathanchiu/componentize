@@ -4,6 +4,8 @@ import { makeToolSchema } from './base';
 import { fileService } from '../../services/fileService';
 import { projectService, CanvasComponent } from '../../services/projectService';
 import { validateComponent } from '../validator';
+import { decomposeComponent, DecomposedComponent } from '../../services/componentDecomposer';
+import type { LayoutState } from '../../../../shared/types';
 
 interface EditComponentParams {
   name: string;
@@ -51,6 +53,78 @@ function inferSize(name: string): { width: number; height: number } {
   return DEFAULT_SIZES.default;
 }
 
+interface DecompositionResult {
+  decomposed: true;
+  pieces: DecomposedComponent[];
+  canvasUpdates: CanvasComponent[];
+  layout: LayoutState;
+}
+
+/**
+ * Try to decompose a component into smaller pieces and add them to the canvas.
+ * Returns null if decomposition didn't happen (<=1 child or validation failed).
+ */
+async function tryDecompose(
+  code: string,
+  originalName: string,
+  originalCode: string,
+  componentSize: { width: number; height: number },
+  projectId: string,
+  section: string,
+  sectionLayout: 'row' | 'column',
+  gap: number | undefined,
+  canvas: CanvasComponent[]
+): Promise<DecompositionResult | null> {
+  const pieces = decomposeComponent(code, originalName, { x: 0, y: 0 }, componentSize);
+
+  if (pieces.length <= 1) {
+    return null;
+  }
+
+  // Validate ALL pieces before writing any files
+  for (const piece of pieces) {
+    const pieceValidation = validateComponent(piece.code, piece.name);
+    if (pieceValidation) {
+      // Validation failed - don't decompose
+      return null;
+    }
+  }
+
+  // All pieces valid - delete original and write pieces
+  await fileService.deleteProjectComponent(projectId, originalName);
+
+  for (const piece of pieces) {
+    await fileService.createProjectComponent(projectId, piece.name, piece.code);
+  }
+
+  // Add each piece to section and canvas
+  for (const piece of pieces) {
+    await projectService.addComponentToSection(
+      projectId,
+      section,
+      piece.name,
+      piece.size,
+      gap,
+      sectionLayout
+    );
+
+    canvas.push({
+      id: uuidv4(),
+      componentName: piece.name,
+      position: { x: 0, y: 0 },
+      size: piece.size,
+      section,
+    });
+  }
+
+  await projectService.saveCanvas(projectId, canvas);
+
+  const canvasUpdates = await projectService.recalculateSectionPositions(projectId, section);
+  const layout = await projectService.getLayout(projectId);
+
+  return { decomposed: true, pieces, canvasUpdates, layout };
+}
+
 /**
  * Section-based edit component invocation:
  * 1. Write code to file
@@ -93,6 +167,24 @@ class EditComponentInvocation implements ToolInvocation<EditComponentParams> {
         success: false,
         error: result.message,
       };
+    }
+
+    // Try to decompose the component into smaller pieces (only for new components with sections)
+    if (section && !existing) {
+      const decomposition = await tryDecompose(
+        code, name, code, componentSize,
+        projectId, section, sectionLayout, gap, canvas
+      );
+
+      if (decomposition) {
+        const pieceNames = decomposition.pieces.map(p => p.name).join(', ');
+        return {
+          success: true,
+          output: `Auto-decomposed "${name}" into ${decomposition.pieces.length} components: ${pieceNames}`,
+          canvasUpdates: decomposition.canvasUpdates,
+          layoutUpdate: decomposition.layout,
+        };
+      }
     }
 
     if (section) {
