@@ -213,16 +213,15 @@ export const blockRenderers: Record<string, React.FC<BlockRendererProps>> = {
 
 // Import AIComponent renderer (dynamic to avoid circular deps)
 import { AIComponentRenderer } from './AIComponentRenderer';
-import { isAIComponentBlock } from '../../../../shared/types';
 
 export const BlockRenderer: React.FC<BlockRendererProps> = (props) => {
   const { block, children } = props;
 
   // Handle AIComponent specially
-  if (isAIComponentBlock(block)) {
+  if (block._type === 'AIComponent') {
     return (
       <AIComponentRenderer
-        block={block}
+        block={block as AIComponentBlock}
         isSelected={props.isSelected}
         onClick={props.onClick}
       />

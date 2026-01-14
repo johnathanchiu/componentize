@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ProjectsPage } from '@/pages/ProjectsPage';
 import { EditorPage } from '@/pages/EditorPage';
+import { BlockCanvasTest } from '@/pages/BlockCanvasTest';
 import { useCanvasActions } from '@/store/canvasStore';
 import { useGenerationActions } from '@/store/generationStore';
 import { useCurrentProject, useProjectActions, type Project } from '@/store/projectStore';
@@ -99,6 +100,11 @@ function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  // Check for test route
+  if (window.location.pathname === '/test-blocks') {
+    return <BlockCanvasTest />;
+  }
 
   if (isLoading) {
     return (

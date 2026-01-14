@@ -2,8 +2,8 @@
  * BlockCanvas - Iframe-based canvas for rendering blocks
  * Provides style isolation and accurate preview
  */
-import React, { useCallback, useEffect, useRef } from 'react';
-import Frame, { FrameContextConsumer } from 'react-frame-component';
+import React, { useCallback, useRef } from 'react';
+import Frame from 'react-frame-component';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
   blocksAtom,
@@ -22,6 +22,7 @@ const INITIAL_CONTENT = `
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
       *, *::before, *::after {
         box-sizing: border-box;
@@ -33,7 +34,6 @@ const INITIAL_CONTENT = `
       }
       .canvas-root {
         min-height: 100vh;
-        padding: 16px;
       }
     </style>
   </head>
@@ -47,40 +47,6 @@ interface BlockCanvasProps {
   className?: string;
 }
 
-/**
- * Inject Tailwind styles into iframe
- */
-const TailwindInjector: React.FC = () => {
-  return (
-    <FrameContextConsumer>
-      {({ document: iframeDoc }) => {
-        // Inject Tailwind CSS
-        useEffect(() => {
-          if (!iframeDoc) return;
-
-          // Create link to Tailwind CDN (for development)
-          // In production, you'd inject the compiled CSS
-          const link = iframeDoc.createElement('link');
-          link.rel = 'stylesheet';
-          link.href = 'https://cdn.tailwindcss.com';
-          iframeDoc.head.appendChild(link);
-
-          // Also inject Tailwind script for JIT
-          const script = iframeDoc.createElement('script');
-          script.src = 'https://cdn.tailwindcss.com';
-          iframeDoc.head.appendChild(script);
-
-          return () => {
-            link.remove();
-            script.remove();
-          };
-        }, [iframeDoc]);
-
-        return null;
-      }}
-    </FrameContextConsumer>
-  );
-};
 
 /**
  * Canvas content - rendered inside the iframe
@@ -180,7 +146,6 @@ export const BlockCanvas: React.FC<BlockCanvasProps> = ({ className = '' }) => {
           className="w-full min-h-screen bg-white shadow-lg border-0"
           contentDidMount={handleMount}
         >
-          <TailwindInjector />
           <CanvasContent />
         </Frame>
       </div>

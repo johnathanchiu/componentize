@@ -120,15 +120,9 @@ export type Block =
 export type BlockType = Block['_type'];
 
 /**
- * Type guard helpers
+ * Type guard helpers - use inline checks like `block._type === 'AIComponent'`
+ * Functions exported from shared/ can cause issues with Vite's module handling
  */
-export function isAIComponentBlock(block: Block): block is AIComponentBlock {
-  return block._type === 'AIComponent';
-}
-
-export function isContainerBlock(block: Block): boolean {
-  return block._type === 'Box';
-}
 
 /**
  * Block registry for editor - metadata about each block type
