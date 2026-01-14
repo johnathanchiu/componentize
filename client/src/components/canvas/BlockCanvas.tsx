@@ -12,6 +12,7 @@ import {
   canvasBreakpointAtom,
   breakpointWidths,
   canvasZoomAtom,
+  dropIndicatorAtom,
 } from '../../atoms';
 import { BlockTreeRenderer } from './BlockTreeRenderer';
 
@@ -54,6 +55,7 @@ interface BlockCanvasProps {
 const CanvasContent: React.FC = () => {
   const blocks = useAtomValue(blocksAtom);
   const [selectedIds, setSelectedIds] = useAtom(selectedBlockIdsAtom);
+  const dropIndicator = useAtomValue(dropIndicatorAtom);
 
   const handleBlockClick = useCallback(
     (blockId: string, e: React.MouseEvent) => {
@@ -85,7 +87,7 @@ const CanvasContent: React.FC = () => {
   if (blocks.length === 0) {
     return (
       <div
-        className="flex items-center justify-center h-full min-h-[400px] text-gray-400"
+        className="flex items-center justify-center h-full min-h-[400px] text-gray-400 relative"
         onClick={handleCanvasClick}
       >
         <div className="text-center">
@@ -98,9 +100,24 @@ const CanvasContent: React.FC = () => {
 
   return (
     <div
-      className="canvas-content min-h-full"
+      className="canvas-content min-h-full relative"
       onClick={handleCanvasClick}
     >
+      {/* Drop indicator - rendered inside iframe */}
+      {dropIndicator.isVisible && (
+        <div
+          data-drop-indicator
+          data-target-block={dropIndicator.targetBlockId}
+          data-position={dropIndicator.position}
+          className="pointer-events-none absolute z-[99999] h-0.5 bg-blue-500 rounded-full"
+          style={{
+            top: dropIndicator.top,
+            left: dropIndicator.left,
+            width: dropIndicator.width,
+          }}
+        />
+      )}
+
       <BlockTreeRenderer
         blocks={blocks}
         selectedIds={selectedIds}
@@ -130,9 +147,9 @@ export const BlockCanvas: React.FC<BlockCanvasProps> = ({ className = '' }) => {
   }, [setCanvasIframe]);
 
   return (
-    <div className={`relative flex-1 overflow-auto bg-gray-100 ${className}`}>
+    <div className={`relative overflow-auto bg-gray-100 ${className}`}>
       <div
-        className="mx-auto transition-all duration-200"
+        className="mx-auto transition-all duration-200 py-4"
         style={{
           width: `${width}px`,
           transform: `scale(${scale})`,

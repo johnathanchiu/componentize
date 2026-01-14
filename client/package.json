@@ -29,6 +29,7 @@
     "jotai": "^2.16.2",
     "lucide-react": "^0.554.0",
     "mitt": "^3.0.1",
+    "nanoid": "^5.1.6",
     "re-resizable": "^6.11.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

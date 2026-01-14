@@ -2,7 +2,7 @@
  * AIComponent Renderer - Renders full React components with runtime compilation
  * This is the special block type that allows AI-generated interactive components
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { AIComponentBlock } from '../../../../shared/types';
 import { compileComponent } from '@/lib/componentRenderer';
 

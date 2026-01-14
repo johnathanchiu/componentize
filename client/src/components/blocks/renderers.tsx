@@ -73,7 +73,7 @@ export const HeadingRenderer: React.FC<BlockRendererProps & { block: HeadingBloc
   isSelected,
   onClick,
 }) => {
-  const Tag = `h${block.level}` as keyof JSX.IntrinsicElements;
+  const Tag = `h${block.level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
   return React.createElement(
     Tag,
     {
@@ -89,7 +89,7 @@ export const ButtonRenderer: React.FC<BlockRendererProps & { block: ButtonBlock 
   isSelected,
   onClick,
 }) => {
-  const IconComponent = block.icon ? (LucideIcons as Record<string, React.FC<{ className?: string }>>)[block.icon] : null;
+  const IconComponent = block.icon ? (LucideIcons as unknown as Record<string, React.FC<{ className?: string }>>)[block.icon] : null;
 
   return (
     <Button
@@ -145,7 +145,7 @@ export const IconRenderer: React.FC<BlockRendererProps & { block: IconBlock }> =
   isSelected,
   onClick,
 }) => {
-  const IconComponent = (LucideIcons as Record<string, React.FC<{ className?: string; size?: number }>>)[block.name];
+  const IconComponent = (LucideIcons as unknown as Record<string, React.FC<{ className?: string; size?: number }>>)[block.name];
 
   if (!IconComponent) {
     return (
@@ -220,11 +220,13 @@ export const BlockRenderer: React.FC<BlockRendererProps> = (props) => {
   // Handle AIComponent specially
   if (block._type === 'AIComponent') {
     return (
-      <AIComponentRenderer
-        block={block as AIComponentBlock}
-        isSelected={props.isSelected}
-        onClick={props.onClick}
-      />
+      <div data-block-id={block._id} data-block-type={block._type}>
+        <AIComponentRenderer
+          block={block as AIComponentBlock}
+          isSelected={props.isSelected}
+          onClick={props.onClick}
+        />
+      </div>
     );
   }
 
@@ -233,11 +235,15 @@ export const BlockRenderer: React.FC<BlockRendererProps> = (props) => {
   if (!Renderer) {
     // Unknown block type - render a placeholder
     return (
-      <div className="p-4 border-2 border-dashed border-gray-300 rounded bg-gray-50">
+      <div data-block-id={block._id} data-block-type={block._type} className="p-4 border-2 border-dashed border-gray-300 rounded bg-gray-50">
         <span className="text-gray-500">Unknown block: {block._type}</span>
       </div>
     );
   }
 
-  return <Renderer {...props}>{children}</Renderer>;
+  return (
+    <div data-block-id={block._id} data-block-type={block._type}>
+      <Renderer {...props}>{children}</Renderer>
+    </div>
+  );
 };

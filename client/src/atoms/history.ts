@@ -169,7 +169,7 @@ export const useBlocksUndoableActions = () => {
         const prevProps: Record<string, unknown> = { _id: update._id };
         Object.keys(update).forEach((key) => {
           if (key !== '_id') {
-            prevProps[key] = (block as Record<string, unknown>)[key];
+            prevProps[key] = (block as unknown as Record<string, unknown>)[key];
           }
         });
         return prevProps as { _id: string } & Partial<Block>;

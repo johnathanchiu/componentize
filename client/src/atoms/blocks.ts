@@ -93,7 +93,7 @@ blockCountAtom.debugLabel = 'blockCountAtom';
  */
 export const setBlocksAtom = atom(
   null,
-  (get, set, newBlocks: Block[]) => {
+  (_get, set, newBlocks: Block[]) => {
     set(blocksAtom, newBlocks);
   }
 );

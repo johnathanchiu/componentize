@@ -54,3 +54,6 @@ export {
   useUndoManager,
   useBlocksUndoableActions,
 } from './history';
+
+// Drag and drop atoms
+export { draggingBlockAtom, dropIndicatorAtom, type DropIndicatorState } from './dnd';
