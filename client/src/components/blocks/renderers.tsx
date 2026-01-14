@@ -3,6 +3,7 @@
  * Standard blocks are rendered directly, AIComponent uses runtime compilation
  */
 import React from 'react';
+import { useAtom } from 'jotai';
 import type {
   Block,
   BoxBlock,
@@ -18,6 +19,8 @@ import type {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import * as LucideIcons from 'lucide-react';
+import { inlineEditingBlockIdAtom } from '../../atoms';
+import { InlineTextEditor } from '../canvas/InlineTextEditor';
 
 // ============================================================================
 // Renderer Props
@@ -57,12 +60,32 @@ export const TextRenderer: React.FC<BlockRendererProps & { block: TextBlock }> =
   isSelected,
   onClick,
 }) => {
+  const [editingBlockId, setEditingBlockId] = useAtom(inlineEditingBlockIdAtom);
+  const isEditing = editingBlockId === block._id;
   const Tag = block.tag || 'p';
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingBlockId(block._id);
+  };
+
+  if (isEditing) {
+    return (
+      <InlineTextEditor
+        blockId={block._id}
+        initialContent={block.content || ''}
+        className={`${block.styles || ''} ${isSelected ? 'ring-2 ring-blue-500' : ''}`.trim()}
+        tag={Tag}
+      />
+    );
+  }
+
   return React.createElement(
     Tag,
     {
       className: `${block.styles || ''} ${isSelected ? 'ring-2 ring-blue-500' : ''}`.trim(),
       onClick,
+      onDoubleClick: handleDoubleClick,
     },
     block.content
   );
@@ -73,12 +96,32 @@ export const HeadingRenderer: React.FC<BlockRendererProps & { block: HeadingBloc
   isSelected,
   onClick,
 }) => {
+  const [editingBlockId, setEditingBlockId] = useAtom(inlineEditingBlockIdAtom);
+  const isEditing = editingBlockId === block._id;
   const Tag = `h${block.level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingBlockId(block._id);
+  };
+
+  if (isEditing) {
+    return (
+      <InlineTextEditor
+        blockId={block._id}
+        initialContent={block.content || ''}
+        className={`${block.styles || ''} ${isSelected ? 'ring-2 ring-blue-500' : ''}`.trim()}
+        tag={Tag}
+      />
+    );
+  }
+
   return React.createElement(
     Tag,
     {
       className: `${block.styles || ''} ${isSelected ? 'ring-2 ring-blue-500' : ''}`.trim(),
       onClick,
+      onDoubleClick: handleDoubleClick,
     },
     block.content
   );
