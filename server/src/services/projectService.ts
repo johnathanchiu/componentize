@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getWorkspacePath } from './workspace';
-import type { StreamEvent, PageStyle, Section, Layer, LayoutState } from '../../../shared/types';
+import type { StreamEvent, PageStyle, Section, Layer, LayoutState, Block, ProjectBlocks } from '../../../shared/types';
 
 export interface Project {
   id: string;
@@ -111,6 +111,13 @@ class ProjectService {
    */
   private getLayoutPath(projectId: string): string {
     return path.join(this.getProjectDir(projectId), 'layout.json');
+  }
+
+  /**
+   * Get the path to a project's blocks file (new block-based model)
+   */
+  private getBlocksPath(projectId: string): string {
+    return path.join(this.getProjectDir(projectId), 'blocks.json');
   }
 
   /**
@@ -624,6 +631,145 @@ class ProjectService {
   async clearHistory(projectId: string): Promise<void> {
     const historyPath = this.getHistoryPath(projectId);
     await fs.writeFile(historyPath, JSON.stringify([], null, 2));
+  }
+
+  // ============================================================================
+  // Block-Based Model Methods (New)
+  // ============================================================================
+
+  /**
+   * Get all blocks for a project
+   */
+  async getBlocks(projectId: string): Promise<ProjectBlocks> {
+    try {
+      const blocksPath = this.getBlocksPath(projectId);
+      const content = await fs.readFile(blocksPath, 'utf-8');
+      return JSON.parse(content) as ProjectBlocks;
+    } catch (error) {
+      // Blocks file not found is expected for new/legacy projects
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.debug(`Failed to read blocks for project ${projectId}:`, error);
+      }
+      return { blocks: [] };
+    }
+  }
+
+  /**
+   * Save all blocks for a project
+   */
+  async saveBlocks(projectId: string, projectBlocks: ProjectBlocks): Promise<void> {
+    const blocksPath = this.getBlocksPath(projectId);
+    await fs.writeFile(blocksPath, JSON.stringify(projectBlocks, null, 2));
+  }
+
+  /**
+   * Add blocks to a project
+   */
+  async addBlocks(projectId: string, newBlocks: Block[], parentId?: string | null, position?: number): Promise<ProjectBlocks> {
+    const projectBlocks = await this.getBlocks(projectId);
+
+    // Set parent for all new blocks
+    const blocksWithParent = newBlocks.map((block) => ({
+      ...block,
+      _parent: parentId ?? block._parent ?? null,
+    }));
+
+    if (position !== undefined && parentId !== undefined) {
+      // Insert at specific position among siblings
+      const siblings = projectBlocks.blocks.filter((b) => b._parent === parentId);
+      const nonSiblings = projectBlocks.blocks.filter((b) => b._parent !== parentId);
+      const before = siblings.slice(0, position);
+      const after = siblings.slice(position);
+      projectBlocks.blocks = [...nonSiblings, ...before, ...blocksWithParent, ...after];
+    } else {
+      projectBlocks.blocks = [...projectBlocks.blocks, ...blocksWithParent];
+    }
+
+    await this.saveBlocks(projectId, projectBlocks);
+    return projectBlocks;
+  }
+
+  /**
+   * Remove blocks by IDs (also removes children recursively)
+   */
+  async removeBlocks(projectId: string, blockIds: string[]): Promise<ProjectBlocks> {
+    const projectBlocks = await this.getBlocks(projectId);
+
+    // Collect all IDs to remove (including children)
+    const idsToRemove = new Set<string>();
+    const collectChildren = (ids: string[]) => {
+      ids.forEach((id) => {
+        idsToRemove.add(id);
+        const children = projectBlocks.blocks.filter((b) => b._parent === id);
+        collectChildren(children.map((c) => c._id));
+      });
+    };
+    collectChildren(blockIds);
+
+    projectBlocks.blocks = projectBlocks.blocks.filter((b) => !idsToRemove.has(b._id));
+    await this.saveBlocks(projectId, projectBlocks);
+    return projectBlocks;
+  }
+
+  /**
+   * Update block properties
+   */
+  async updateBlocks(projectId: string, updates: Array<{ _id: string } & Partial<Block>>): Promise<ProjectBlocks> {
+    const projectBlocks = await this.getBlocks(projectId);
+    const updateMap = new Map(updates.map((u) => [u._id, u]));
+
+    projectBlocks.blocks = projectBlocks.blocks.map((block) => {
+      const update = updateMap.get(block._id);
+      if (update) {
+        return { ...block, ...update } as Block;
+      }
+      return block;
+    });
+
+    await this.saveBlocks(projectId, projectBlocks);
+    return projectBlocks;
+  }
+
+  /**
+   * Move blocks to a new parent/position
+   */
+  async moveBlocks(projectId: string, blockIds: string[], newParentId: string | null, position: number): Promise<ProjectBlocks> {
+    const projectBlocks = await this.getBlocks(projectId);
+
+    // Remove blocks from current positions
+    const blocksToMove = projectBlocks.blocks.filter((b) => blockIds.includes(b._id));
+    const remainingBlocks = projectBlocks.blocks.filter((b) => !blockIds.includes(b._id));
+
+    // Update parent of moved blocks
+    const movedBlocks = blocksToMove.map((b) => ({ ...b, _parent: newParentId }));
+
+    // Insert at new position
+    const siblings = remainingBlocks.filter((b) => b._parent === newParentId);
+    const nonSiblings = remainingBlocks.filter((b) => b._parent !== newParentId);
+    const before = siblings.slice(0, position);
+    const after = siblings.slice(position);
+
+    projectBlocks.blocks = [...nonSiblings, ...before, ...movedBlocks, ...after];
+    await this.saveBlocks(projectId, projectBlocks);
+    return projectBlocks;
+  }
+
+  /**
+   * Get a block by ID
+   */
+  async getBlock(projectId: string, blockId: string): Promise<Block | null> {
+    const projectBlocks = await this.getBlocks(projectId);
+    return projectBlocks.blocks.find((b) => b._id === blockId) ?? null;
+  }
+
+  /**
+   * Update theme tokens
+   */
+  async updateTheme(projectId: string, theme: ProjectBlocks['theme']): Promise<ProjectBlocks> {
+    const projectBlocks = await this.getBlocks(projectId);
+    projectBlocks.theme = { ...projectBlocks.theme, ...theme };
+    await this.saveBlocks(projectId, projectBlocks);
+    return projectBlocks;
   }
 }
 
