@@ -32,6 +32,7 @@
     "re-resizable": "^6.11.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-frame-component": "^5.2.7",
     "react-markdown": "^10.1.0",
     "sucrase": "^3.35.1",
     "tailwind-merge": "^3.4.0",
