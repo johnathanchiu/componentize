@@ -3,27 +3,29 @@ import { BaseAgent } from '../base';
 import type { StreamEvent } from '../../../../shared/types';
 import {
   ToolRegistry,
-  EditComponentTool,
-  ReadComponentTool,
   ManageTodosTool,
-  GetLayoutTool,
-  SetPageStyleTool,
-  CreateLayerTool,
+  // Block-based tools (new)
+  AddBlocksTool,
+  UpdateBlocksTool,
+  RemoveBlocksTool,
+  GetBlocksTool,
 } from '../tools';
 import { SYSTEM_PROMPT } from './prompt';
 import { projectService, ConversationMessage } from '../../services/projectService';
 
 /**
  * Create the tool registry for the design agent
+ * Uses the new block-based tools
  */
 function createDesignToolRegistry(): ToolRegistry {
   return new ToolRegistry([
-    new EditComponentTool(),
-    new ReadComponentTool(),
+    // Block-based tools
+    new GetBlocksTool(),
+    new AddBlocksTool(),
+    new UpdateBlocksTool(),
+    new RemoveBlocksTool(),
+    // Task tracking
     new ManageTodosTool(),
-    new GetLayoutTool(),
-    new SetPageStyleTool(),
-    new CreateLayerTool(),
   ]);
 }
 
@@ -106,7 +108,7 @@ export class DesignAgent extends BaseAgent {
     // Append new user message
     const userContent = `${prompt}
 
-Use get_layout first if you need to see what's on the canvas. Use edit_component to create or update components. For complex requests with multiple components, use manage_todos to track your progress.`;
+Use get_blocks first to see the current page structure. Use add_blocks to add new blocks, update_blocks to modify existing blocks, and remove_blocks to delete blocks. For complex requests, use manage_todos to track your progress.`;
 
     messages.push({ role: 'user', content: userContent });
 
