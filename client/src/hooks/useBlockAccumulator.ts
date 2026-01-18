@@ -4,7 +4,7 @@ import { useGenerationStore } from '@/store/generationStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useCanvasStore } from '@/store/canvasStore';
 import { useLayoutStore } from '@/store/layoutStore';
-import { blocksAtom, setBlocksAtom, addBlocksAtom, removeBlocksAtom, updateBlocksAtom } from '@/atoms';
+import { blocksAtom } from '@/atoms';
 import type { StreamEvent, Block } from '@/shared/types';
 
 /**

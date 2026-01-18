@@ -1,9 +1,7 @@
-// Legacy canvas (React Flow based)
-export { Canvas } from './Canvas';
-export { ComponentNode, type ComponentNodeData } from './ComponentNode';
-export { ComponentErrorBoundary } from './ErrorBoundary';
-export { ErrorOverlay } from './ErrorOverlay';
-
-// New block-based canvas (iframe based)
+// Block-based canvas (iframe based with free-form positioning)
 export { BlockCanvas } from './BlockCanvas';
 export { BlockTreeRenderer } from './BlockTreeRenderer';
+
+// Error handling
+export { ComponentErrorBoundary } from './ErrorBoundary';
+export { ErrorOverlay } from './ErrorOverlay';

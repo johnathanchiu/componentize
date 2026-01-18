@@ -1,2 +1,2 @@
 export { ProjectsPage } from './ProjectsPage';
-export { EditorPage } from './EditorPage';
+export { BlockEditor } from './BlockEditor';
