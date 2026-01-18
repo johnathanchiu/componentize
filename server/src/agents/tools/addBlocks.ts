@@ -10,6 +10,9 @@ interface AddBlocksParams {
     _type: string;
     _parent?: string | null;
     _name?: string;
+    // Free-form positioning (optional - if not provided, auto-positions)
+    _position?: { x: number; y: number };
+    _size?: { width: number; height: number };
     // Standard block props
     content?: string;
     styles?: string;
@@ -58,13 +61,83 @@ class AddBlocksInvocation implements ToolInvocation<AddBlocksParams> {
       }
     }
 
+    // Get existing blocks to calculate positions for new root-level blocks
+    const existingBlocks = await projectService.getBlocks(projectId);
+    const existingRootBlocks = existingBlocks.blocks.filter(b => b._parent === null && b._position);
+
+    // Calculate next available position for auto-positioning
+    const calculateNextPosition = (index: number): { x: number; y: number } => {
+      // Find the lowest block (max y + height)
+      let maxY = 0;
+      for (const block of existingRootBlocks) {
+        if (block._position && block._size) {
+          const blockBottom = block._position.y + (block._size.height || 100);
+          if (blockBottom > maxY) {
+            maxY = blockBottom;
+          }
+        } else if (block._position) {
+          const blockBottom = block._position.y + 100; // Default height
+          if (blockBottom > maxY) {
+            maxY = blockBottom;
+          }
+        }
+      }
+
+      // Add offset for previously added blocks in this batch
+      const batchOffset = index * 120;
+
+      return {
+        x: 50, // Default left margin
+        y: maxY + 20 + batchOffset, // 20px gap below lowest block
+      };
+    };
+
+    // Default sizes based on block type
+    const getDefaultSize = (blockType: string): { width: number; height: number } => {
+      switch (blockType) {
+        case 'Box':
+          return { width: 400, height: 200 };
+        case 'Heading':
+          return { width: 300, height: 60 };
+        case 'Text':
+          return { width: 350, height: 80 };
+        case 'Button':
+          return { width: 150, height: 50 };
+        case 'Image':
+          return { width: 300, height: 200 };
+        case 'AIComponent':
+          return { width: 400, height: 300 };
+        default:
+          return { width: 200, height: 100 };
+      }
+    };
+
+    let rootBlockIndex = 0;
+
     // Create blocks with generated IDs
     const newBlocks: Block[] = blocks.map((block) => {
+      const isRootLevel = !block._parent;
+
+      // Auto-position root-level blocks if no position provided
+      let position = block._position;
+      let size = block._size;
+
+      if (isRootLevel && !position) {
+        position = calculateNextPosition(rootBlockIndex);
+        rootBlockIndex++;
+      }
+
+      if (isRootLevel && !size) {
+        size = getDefaultSize(block._type);
+      }
+
       const baseBlock = {
         _id: uuidv4(),
         _type: block._type,
         _parent: block._parent ?? null,
         _name: block._name,
+        ...(position && { _position: position }),
+        ...(size && { _size: size }),
       };
 
       // Build the full block based on type
@@ -189,10 +262,10 @@ class AddBlocksInvocation implements ToolInvocation<AddBlocksParams> {
  */
 export class AddBlocksTool implements BaseTool {
   name = 'add_blocks';
-  description = `Add one or more blocks to the page.
+  description = `Add one or more blocks to the free-form canvas.
 
-Blocks are the building blocks of the page. Each block has a type and properties.
-Use Box blocks as containers to create layouts with nested children.
+Blocks are positioned freely on a Figma-like canvas. Root-level blocks have x/y positions.
+Nested blocks (children of containers) use flow layout within their parent.
 
 Block types:
 - Box: Container element (div, section, header, etc.) - can have children
@@ -205,13 +278,17 @@ Block types:
 - Input: Form input
 - AIComponent: Custom React component with full code (use for complex interactive elements)
 
-Example - Create a hero section:
+Positioning:
+- Root-level blocks: Provide _position { x, y } to place at specific coordinates
+- If no position provided, blocks auto-position below existing content
+- Nested blocks (with _parent): Position is determined by parent's layout
+
+Example - Create blocks at specific positions:
 add_blocks({
   blocks: [
-    { _type: "Box", _name: "Hero Section", styles: "py-20 bg-gradient-to-b from-slate-900 to-slate-800" },
-    { _type: "Heading", _name: "Hero Title", _parent: "<hero-box-id>", content: "Build faster", level: 1, styles: "text-5xl font-bold text-white" },
-    { _type: "Text", _parent: "<hero-box-id>", content: "Create beautiful pages in minutes", styles: "text-xl text-gray-300" },
-    { _type: "Button", _parent: "<hero-box-id>", content: "Get Started", variant: "default", styles: "mt-4" }
+    { _type: "Heading", _name: "Title", content: "Welcome", _position: { x: 100, y: 50 }, _size: { width: 300, height: 60 } },
+    { _type: "Text", content: "Some description", _position: { x: 100, y: 130 } },
+    { _type: "Button", content: "Click me", _position: { x: 100, y: 230 } }
   ]
 })`;
 
@@ -237,6 +314,22 @@ add_blocks({
             _name: {
               type: 'string',
               description: 'Display name in the outline tree',
+            },
+            _position: {
+              type: 'object',
+              description: 'Free-form canvas position { x, y }. Auto-calculated if not provided.',
+              properties: {
+                x: { type: 'number', description: 'X coordinate in pixels' },
+                y: { type: 'number', description: 'Y coordinate in pixels' },
+              },
+            },
+            _size: {
+              type: 'object',
+              description: 'Block dimensions { width, height }. Uses default based on block type if not provided.',
+              properties: {
+                width: { type: 'number', description: 'Width in pixels' },
+                height: { type: 'number', description: 'Height in pixels' },
+              },
             },
             content: {
               type: 'string',

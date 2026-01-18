@@ -6,12 +6,28 @@ import { atom } from 'jotai';
 import type { Block } from '../../../shared/types';
 
 /**
- * Currently dragged block data from library
+ * Currently dragged block data from library (for adding new blocks)
  */
 export const draggingBlockAtom = atom<{
   type: string;
   createBlock: () => Block;
 } | null>(null);
+
+/**
+ * Currently dragged block ID on canvas (for moving existing blocks)
+ * Set when Cmd+dragging a block on the canvas
+ */
+export const canvasDraggingBlockIdAtom = atom<string | null>(null);
+
+/**
+ * Canvas drop indicator for block reordering
+ */
+export interface CanvasDropIndicator {
+  targetBlockId: string;
+  position: 'before' | 'after';
+}
+
+export const canvasDropIndicatorAtom = atom<CanvasDropIndicator | null>(null);
 
 /**
  * Drop indicator state - rendered INSIDE the iframe

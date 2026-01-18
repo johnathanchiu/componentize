@@ -13,235 +13,54 @@ import { cn } from '@/lib/utils';
 import {
   blocksAtom,
   canvasBreakpointAtom,
-  canvasIframeAtom,
+  canvasViewportGetterAtom,
   draggingBlockAtom,
   dropIndicatorAtom,
   selectedBlockIdsAtom,
   type CanvasBreakpoint,
 } from '@/atoms';
 import { useUndoManager } from '@/atoms/history';
-import type { Block, BoxBlock, HeadingBlock, TextBlock, ButtonBlock, AIComponentBlock } from '../../../shared/types';
+import type { Block, HeadingBlock, TextBlock, ButtonBlock } from '../../../shared/types';
 
-// Sample blocks to start with
+// Sample positioned blocks for free-form canvas demo
 const STARTER_BLOCKS: Block[] = [
-  // Hero section
+  // A heading positioned at top-left
   {
-    _id: 'hero',
-    _type: 'Box',
-    _parent: null,
-    _name: 'Hero Section',
-    tag: 'section',
-    styles: 'flex flex-col items-center justify-center py-24 px-8 bg-gradient-to-br from-indigo-600 to-purple-700 text-white',
-  } as BoxBlock,
-  {
-    _id: 'hero-heading',
+    _id: 'heading-1',
     _type: 'Heading',
-    _parent: 'hero',
-    _name: 'Hero Title',
+    _parent: null,
+    _name: 'Welcome Heading',
     level: 1,
-    content: 'Build Something Amazing',
-    styles: 'text-5xl font-bold mb-4 text-center',
+    content: 'Welcome to the Canvas',
+    styles: 'text-3xl font-bold text-gray-900',
+    _position: { x: 50, y: 50 },
+    _size: { width: 300, height: 60 },
   } as HeadingBlock,
+  // A button positioned below and to the right
   {
-    _id: 'hero-subtitle',
-    _type: 'Text',
-    _parent: 'hero',
-    _name: 'Hero Subtitle',
-    tag: 'p',
-    content: 'Create beautiful interfaces with our block-based editor',
-    styles: 'text-xl text-indigo-100 mb-8 text-center max-w-2xl',
-  } as TextBlock,
-  {
-    _id: 'hero-buttons',
-    _type: 'Box',
-    _parent: 'hero',
-    _name: 'Button Group',
-    tag: 'div',
-    styles: 'flex gap-4',
-  } as BoxBlock,
-  {
-    _id: 'hero-cta',
+    _id: 'button-1',
     _type: 'Button',
-    _parent: 'hero-buttons',
-    _name: 'CTA Button',
-    content: 'Get Started',
+    _parent: null,
+    _name: 'Action Button',
+    content: 'Click Me',
     variant: 'default',
     size: 'lg',
-    styles: 'bg-white text-indigo-600 hover:bg-indigo-50',
+    styles: 'bg-indigo-600 hover:bg-indigo-700 text-white',
+    _position: { x: 100, y: 150 },
+    _size: { width: 150, height: 50 },
   } as ButtonBlock,
+  // A text block
   {
-    _id: 'hero-secondary',
-    _type: 'Button',
-    _parent: 'hero-buttons',
-    _name: 'Secondary Button',
-    content: 'Learn More',
-    variant: 'outline',
-    size: 'lg',
-    styles: 'border-white text-white hover:bg-white/10',
-  } as ButtonBlock,
-
-  // Features section
-  {
-    _id: 'features',
-    _type: 'Box',
-    _parent: null,
-    _name: 'Features Section',
-    tag: 'section',
-    styles: 'py-20 px-8 bg-white',
-  } as BoxBlock,
-  {
-    _id: 'features-heading',
-    _type: 'Heading',
-    _parent: 'features',
-    _name: 'Features Title',
-    level: 2,
-    content: 'Why Choose Us',
-    styles: 'text-3xl font-bold text-center mb-4 text-gray-900',
-  } as HeadingBlock,
-  {
-    _id: 'features-subtitle',
+    _id: 'text-1',
     _type: 'Text',
-    _parent: 'features',
-    _name: 'Features Subtitle',
-    tag: 'p',
-    content: 'Everything you need to build modern web experiences',
-    styles: 'text-gray-600 text-center mb-12 max-w-2xl mx-auto',
-  } as TextBlock,
-  {
-    _id: 'features-grid',
-    _type: 'Box',
-    _parent: 'features',
-    _name: 'Features Grid',
-    tag: 'div',
-    styles: 'grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto',
-  } as BoxBlock,
-
-  // Feature cards as AIComponents for interactivity
-  {
-    _id: 'feature-1',
-    _type: 'AIComponent',
-    _parent: 'features-grid',
-    _name: 'Feature Card 1',
-    componentName: 'FeatureCard1',
-    code: `function FeatureCard1() {
-  const [liked, setLiked] = useState(false);
-  return (
-    <Card className="p-6 text-center hover:shadow-lg transition-shadow">
-      <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-        <Zap className="h-6 w-6 text-indigo-600" />
-      </div>
-      <h3 className="font-semibold text-lg mb-2">Lightning Fast</h3>
-      <p className="text-gray-600 text-sm mb-4">Build and iterate quickly with our intuitive editor</p>
-      <Button
-        variant={liked ? "default" : "outline"}
-        size="sm"
-        onClick={() => setLiked(!liked)}
-      >
-        <Heart className={liked ? "h-4 w-4 mr-1 fill-current" : "h-4 w-4 mr-1"} />
-        {liked ? 'Liked!' : 'Like'}
-      </Button>
-    </Card>
-  );
-}`,
-  } as AIComponentBlock,
-  {
-    _id: 'feature-2',
-    _type: 'AIComponent',
-    _parent: 'features-grid',
-    _name: 'Feature Card 2',
-    componentName: 'FeatureCard2',
-    code: `function FeatureCard2() {
-  const [count, setCount] = useState(0);
-  return (
-    <Card className="p-6 text-center hover:shadow-lg transition-shadow">
-      <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-        <Sparkles className="h-6 w-6 text-green-600" />
-      </div>
-      <h3 className="font-semibold text-lg mb-2">AI Powered</h3>
-      <p className="text-gray-600 text-sm mb-4">Generate components with natural language</p>
-      <div className="flex items-center justify-center gap-2">
-        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCount(c => c - 1)}>
-          <Minus className="h-4 w-4" />
-        </Button>
-        <span className="w-8 text-center font-semibold">{count}</span>
-        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCount(c => c + 1)}>
-          <Plus className="h-4 w-4" />
-        </Button>
-      </div>
-    </Card>
-  );
-}`,
-  } as AIComponentBlock,
-  {
-    _id: 'feature-3',
-    _type: 'AIComponent',
-    _parent: 'features-grid',
-    _name: 'Feature Card 3',
-    componentName: 'FeatureCard3',
-    code: `function FeatureCard3() {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <Card className="p-6 text-center hover:shadow-lg transition-shadow">
-      <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-        <Code className="h-6 w-6 text-purple-600" />
-      </div>
-      <h3 className="font-semibold text-lg mb-2">Clean Code</h3>
-      <p className="text-gray-600 text-sm mb-4">Export production-ready React components</p>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setExpanded(!expanded)}
-      >
-        {expanded ? 'Show Less' : 'Show More'}
-        <ChevronDown className={expanded ? "h-4 w-4 ml-1 rotate-180 transition-transform" : "h-4 w-4 ml-1 transition-transform"} />
-      </Button>
-      {expanded && (
-        <p className="text-xs text-gray-500 mt-2 animate-in fade-in">
-          Full TypeScript support with proper typing
-        </p>
-      )}
-    </Card>
-  );
-}`,
-  } as AIComponentBlock,
-
-  // CTA Section
-  {
-    _id: 'cta',
-    _type: 'Box',
     _parent: null,
-    _name: 'CTA Section',
-    tag: 'section',
-    styles: 'py-16 px-8 bg-gray-900 text-white text-center',
-  } as BoxBlock,
-  {
-    _id: 'cta-heading',
-    _type: 'Heading',
-    _parent: 'cta',
-    _name: 'CTA Heading',
-    level: 2,
-    content: 'Ready to Get Started?',
-    styles: 'text-3xl font-bold mb-4',
-  } as HeadingBlock,
-  {
-    _id: 'cta-text',
-    _type: 'Text',
-    _parent: 'cta',
-    _name: 'CTA Text',
+    _name: 'Description',
     tag: 'p',
-    content: 'Join thousands of developers building with blocks',
-    styles: 'text-gray-400 mb-8',
+    content: 'Drag blocks from the library to add them to your design. Drag existing blocks to reposition them.',
+    styles: 'text-gray-600',
+    _position: { x: 50, y: 250 },
+    _size: { width: 400, height: 80 },
   } as TextBlock,
-  {
-    _id: 'cta-button',
-    _type: 'Button',
-    _parent: 'cta',
-    _name: 'CTA Button',
-    content: 'Start Building Free',
-    variant: 'default',
-    size: 'lg',
-    styles: 'bg-indigo-600 hover:bg-indigo-700',
-  } as ButtonBlock,
 ];
 
 interface BlockEditorProps {
@@ -371,73 +190,16 @@ const RightSidebar: React.FC = () => {
  */
 const CanvasDropZone: React.FC = () => {
   const draggingBlock = useAtomValue(draggingBlockAtom);
-  const [blocks, setBlocks] = useAtom(blocksAtom);
+  const setBlocks = useSetAtom(blocksAtom);
   const setSelectedIds = useSetAtom(selectedBlockIdsAtom);
-  const canvasIframe = useAtomValue(canvasIframeAtom);
+  const getViewport = useAtomValue(canvasViewportGetterAtom);
   const setDropIndicator = useSetAtom(dropIndicatorAtom);
   const [isOver, setIsOver] = useState(false);
-
-  // Detect drop position and update indicator atom with iframe-relative coordinates
-  const updateDropIndicator = (clientY: number) => {
-    if (!canvasIframe?.contentDocument) {
-      setDropIndicator({ isVisible: false, targetBlockId: null, position: 'after', top: 0, left: 0, width: 0 });
-      return;
-    }
-
-    const iframeRect = canvasIframe.getBoundingClientRect();
-    // Convert screen Y to iframe Y
-    const iframeY = clientY - iframeRect.top;
-
-    // Get all root-level blocks
-    const rootBlockIds = blocks.filter(b => b._parent === null).map(b => b._id);
-    const blockElements = canvasIframe.contentDocument.querySelectorAll('[data-block-id]');
-
-    interface ClosestBlock {
-      id: string;
-      rect: DOMRect;
-      position: 'before' | 'after';
-      distance: number;
-    }
-
-    let closest: ClosestBlock | null = null;
-
-    blockElements.forEach((el) => {
-      const blockId = el.getAttribute('data-block-id');
-      if (!blockId || !rootBlockIds.includes(blockId)) return;
-
-      // Rect is in iframe coordinates
-      const rect = el.getBoundingClientRect();
-      const middle = rect.top + rect.height / 2;
-      const position: 'before' | 'after' = iframeY < middle ? 'before' : 'after';
-      const edge = position === 'before' ? rect.top : rect.bottom;
-      const distance = Math.abs(iframeY - edge);
-
-      if (!closest || distance < closest.distance) {
-        closest = { id: blockId, rect, position, distance };
-      }
-    });
-
-    if (!closest) {
-      setDropIndicator({ isVisible: false, targetBlockId: null, position: 'after', top: 0, left: 0, width: 0 });
-      return;
-    }
-
-    const result = closest as ClosestBlock;
-    setDropIndicator({
-      isVisible: true,
-      targetBlockId: result.id,
-      position: result.position,
-      top: result.position === 'before' ? result.rect.top : result.rect.bottom,
-      left: result.rect.left,
-      width: result.rect.width,
-    });
-  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     if (!isOver) setIsOver(true);
-    updateDropIndicator(e.clientY);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
@@ -452,39 +214,32 @@ const CanvasDropZone: React.FC = () => {
     e.preventDefault();
     setIsOver(false);
 
-    // Read current indicator state for insertion
-    const indicator = canvasIframe?.contentDocument?.querySelector('[data-drop-indicator]');
-    const targetBlockId = indicator?.getAttribute('data-target-block');
-    const position = indicator?.getAttribute('data-position') as 'before' | 'after' | null;
-
     if (draggingBlock) {
       const newBlock = draggingBlock.createBlock();
 
-      if (targetBlockId && position) {
-        const targetIndex = blocks.findIndex(b => b._id === targetBlockId);
-        if (targetIndex !== -1) {
-          const insertIndex = position === 'before' ? targetIndex : targetIndex + 1;
-          setBlocks((prev) => {
-            const newBlocks = [...prev];
-            newBlocks.splice(insertIndex, 0, newBlock);
-            return newBlocks;
-          });
-        } else {
-          setBlocks((prev) => [...prev, newBlock]);
-        }
-      } else {
-        setBlocks((prev) => [...prev, newBlock]);
-      }
+      // Get current viewport from getter (avoids stale state during animations)
+      const viewport = getViewport?.() ?? { x: 0, y: 0, zoom: 1 };
 
-      setSelectedIds([newBlock._id]);
+      // Calculate drop position relative to canvas container
+      const containerRect = e.currentTarget.getBoundingClientRect();
 
-      // Scroll to new block
-      setTimeout(() => {
-        if (canvasIframe?.contentDocument) {
-          const blockElement = canvasIframe.contentDocument.querySelector(`[data-block-id="${newBlock._id}"]`);
-          blockElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 100);
+      // Screen position relative to the drop zone container
+      const screenX = e.clientX - containerRect.left;
+      const screenY = e.clientY - containerRect.top;
+
+      // Convert screen coordinates to canvas coordinates (accounting for pan/zoom)
+      const canvasX = (screenX - viewport.x) / viewport.zoom;
+      const canvasY = (screenY - viewport.y) / viewport.zoom;
+
+      // Assign position and default size for free-form positioning
+      const positionedBlock = {
+        ...newBlock,
+        _position: { x: Math.max(0, canvasX), y: Math.max(0, canvasY) },
+        _size: { width: 200, height: 100 }, // Default size
+      };
+
+      setBlocks((prev) => [...prev, positionedBlock]);
+      setSelectedIds([positionedBlock._id]);
     }
 
     setDropIndicator({ isVisible: false, targetBlockId: null, position: 'after', top: 0, left: 0, width: 0 });
@@ -501,15 +256,6 @@ const CanvasDropZone: React.FC = () => {
       onDrop={handleDrop}
     >
       <BlockCanvas className="h-full w-full" />
-
-      {/* Overlay message when no blocks to position against */}
-      {isOver && draggingBlock && blocks.filter(b => b._parent === null).length === 0 && (
-        <div className="absolute inset-0 bg-blue-500/10 pointer-events-none flex items-center justify-center">
-          <div className="bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg font-medium">
-            Drop to add {draggingBlock.type}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
