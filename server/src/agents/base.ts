@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { appConfig } from '../config';
-import type { StreamEvent, CanvasComponent, AgentTodo, LayoutState } from '../../../shared/types';
+import type { StreamEvent, CanvasComponent, AgentTodo, LayoutState, Block } from '../../../shared/types';
 import type { ToolRegistry, ToolSchema, ToolResult } from './tools';
 
 interface ToolCall {
@@ -215,6 +215,8 @@ When writing React components:
         canvasUpdates: result.canvasUpdates as CanvasComponent[] | undefined,
         todos: result.todosUpdate as AgentTodo[] | undefined,
         layout: result.layoutUpdate as LayoutState | undefined,
+        blocks: result.blocksUpdate as Block[] | undefined,
+        blocksRemoved: result.blocksRemoved as string[] | undefined,
       };
     }
 

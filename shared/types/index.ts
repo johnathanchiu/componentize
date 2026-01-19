@@ -2,6 +2,158 @@
 // Shared Types - Used by both frontend and backend
 // ============================================================================
 
+// ============================================================================
+// Block-Based Data Model (Inspired by Chaibuilder)
+// ============================================================================
+
+/**
+ * Base block type - all blocks have these internal properties
+ * Underscore prefix indicates internal/system properties (chaibuilder convention)
+ */
+export interface BaseBlock {
+  _id: string;
+  _type: string;
+  _parent: string | null;  // Parent block ID for nesting
+  _name?: string;          // Display name in tree view
+}
+
+/**
+ * Standard block types with their specific props
+ */
+
+// Box - Container element (div, section, header, etc.)
+export interface BoxBlock extends BaseBlock {
+  _type: 'Box';
+  tag?: 'div' | 'section' | 'header' | 'footer' | 'article' | 'aside' | 'main' | 'nav';
+  styles?: string;  // Tailwind classes
+  backgroundImage?: string;
+}
+
+// Text - Paragraph or span
+export interface TextBlock extends BaseBlock {
+  _type: 'Text';
+  content: string;
+  tag?: 'p' | 'span';
+  styles?: string;
+}
+
+// Heading - H1-H6
+export interface HeadingBlock extends BaseBlock {
+  _type: 'Heading';
+  content: string;
+  level: 1 | 2 | 3 | 4 | 5 | 6;
+  styles?: string;
+}
+
+// Button
+export interface ButtonBlock extends BaseBlock {
+  _type: 'Button';
+  content: string;
+  variant?: 'default' | 'outline' | 'ghost' | 'destructive';
+  size?: 'sm' | 'default' | 'lg';
+  styles?: string;
+  icon?: string;  // Lucide icon name
+  iconPosition?: 'left' | 'right';
+}
+
+// Image
+export interface ImageBlock extends BaseBlock {
+  _type: 'Image';
+  src: string;
+  alt: string;
+  styles?: string;
+}
+
+// Link
+export interface LinkBlock extends BaseBlock {
+  _type: 'Link';
+  content: string;
+  href: string;
+  target?: '_self' | '_blank';
+  styles?: string;
+}
+
+// Icon - Lucide icon
+export interface IconBlock extends BaseBlock {
+  _type: 'Icon';
+  name: string;  // Lucide icon name
+  size?: number;
+  styles?: string;
+}
+
+// Input
+export interface InputBlock extends BaseBlock {
+  _type: 'Input';
+  placeholder?: string;
+  type?: 'text' | 'email' | 'password' | 'number';
+  label?: string;
+  styles?: string;
+}
+
+/**
+ * AIComponent - Our special block type for AI-generated React components
+ * This is the differentiator from chaibuilder - full React code with hooks
+ */
+export interface AIComponentBlock extends BaseBlock {
+  _type: 'AIComponent';
+  code: string;           // Full React component code
+  componentName: string;  // Name of the component function
+}
+
+/**
+ * Union type of all block types
+ */
+export type Block =
+  | BoxBlock
+  | TextBlock
+  | HeadingBlock
+  | ButtonBlock
+  | ImageBlock
+  | LinkBlock
+  | IconBlock
+  | InputBlock
+  | AIComponentBlock;
+
+/**
+ * Block type string union for type guards
+ */
+export type BlockType = Block['_type'];
+
+/**
+ * Type guard helpers - use inline checks like `block._type === 'AIComponent'`
+ * Functions exported from shared/ can cause issues with Vite's module handling
+ */
+
+/**
+ * Block registry for editor - metadata about each block type
+ */
+export interface BlockDefinition {
+  type: BlockType;
+  label: string;
+  description: string;
+  category: 'layout' | 'typography' | 'interactive' | 'media' | 'ai';
+  icon?: string;  // Lucide icon name
+  canAcceptChildren: boolean;
+  defaultProps: Partial<Block>;
+}
+
+/**
+ * Project state - the new format
+ */
+export interface ProjectBlocks {
+  blocks: Block[];
+  // Theme tokens (for later)
+  theme?: {
+    colors?: Record<string, string>;
+    fonts?: { heading?: string; body?: string };
+    radius?: string;
+  };
+}
+
+// ============================================================================
+// Legacy Types (keeping for now, will migrate away)
+// ============================================================================
+
 // Component Types
 export interface Component {
   name: string;
@@ -119,7 +271,7 @@ export type StreamEvent =
   | { type: 'thinking_signature'; signature: string } // Required for multi-turn conversations
   | { type: 'text'; content: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; id: string; name: string; success: boolean; output?: string; canvas?: CanvasComponent; canvasUpdates?: CanvasComponent[]; todos?: AgentTodo[]; layout?: LayoutState }
+  | { type: 'tool_result'; id: string; name: string; success: boolean; output?: string; canvas?: CanvasComponent; canvasUpdates?: CanvasComponent[]; todos?: AgentTodo[]; layout?: LayoutState; blocks?: Block[]; blocksRemoved?: string[] }
   | { type: 'complete'; content?: string }
   | { type: 'error'; message: string }
 

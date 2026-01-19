@@ -1,9 +1,11 @@
 import { useCallback, useRef } from 'react';
+import { getDefaultStore } from 'jotai';
 import { useGenerationStore } from '@/store/generationStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useCanvasStore } from '@/store/canvasStore';
 import { useLayoutStore } from '@/store/layoutStore';
-import type { StreamEvent } from '@/shared/types';
+import { blocksAtom, setBlocksAtom, addBlocksAtom, removeBlocksAtom, updateBlocksAtom } from '@/atoms';
+import type { StreamEvent, Block } from '@/shared/types';
 
 /**
  * Hook for processing stream events from the server.
@@ -84,6 +86,40 @@ export function useBlockAccumulator() {
         // Handle embedded layout update
         if (event.layout) {
           layoutStore.setLayout(event.layout);
+        }
+
+        // Handle block updates from AI tools
+        if (event.blocks && event.blocks.length > 0) {
+          const jotaiStore = getDefaultStore();
+          const currentBlocks = jotaiStore.get(blocksAtom);
+
+          // Merge new/updated blocks with existing
+          const blockMap = new Map(currentBlocks.map((b: Block) => [b._id, b]));
+          for (const block of event.blocks) {
+            blockMap.set(block._id, block);
+          }
+          jotaiStore.set(blocksAtom, Array.from(blockMap.values()));
+        }
+
+        // Handle block removals
+        if (event.blocksRemoved && event.blocksRemoved.length > 0) {
+          const jotaiStore = getDefaultStore();
+          const currentBlocks = jotaiStore.get(blocksAtom);
+          const idsToRemove = new Set(event.blocksRemoved);
+
+          // Also remove children of removed blocks
+          const collectChildren = (ids: Set<string>) => {
+            const childrenIds = currentBlocks
+              .filter((b: Block) => b._parent && ids.has(b._parent))
+              .map((b: Block) => b._id);
+            if (childrenIds.length > 0) {
+              childrenIds.forEach((id: string) => idsToRemove.add(id));
+              collectChildren(new Set(childrenIds));
+            }
+          };
+          collectChildren(idsToRemove);
+
+          jotaiStore.set(blocksAtom, currentBlocks.filter((b: Block) => !idsToRemove.has(b._id)));
         }
         break;
 

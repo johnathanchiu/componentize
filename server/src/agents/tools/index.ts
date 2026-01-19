@@ -7,3 +7,8 @@ export { ManageTodosTool } from './manageTodos';
 export { GetLayoutTool } from './getLayout';
 export { SetPageStyleTool } from './setPageStyle';
 export { CreateLayerTool } from './createLayer';
+// Block-based tools
+export { AddBlocksTool } from './addBlocks';
+export { UpdateBlocksTool } from './updateBlocks';
+export { RemoveBlocksTool } from './removeBlocks';
+export { GetBlocksTool } from './getBlocks';

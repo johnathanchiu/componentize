@@ -1,4 +1,4 @@
-import type { CanvasComponent, AgentTodo, LayoutState } from '../../../../shared/types';
+import type { CanvasComponent, AgentTodo, LayoutState, Block } from '../../../../shared/types';
 
 /**
  * Structured tool result - clear success/error with typed side effects
@@ -12,6 +12,9 @@ export interface ToolResult {
   canvasUpdates?: CanvasComponent[];        // Multiple component updates (for section recalculation)
   todosUpdate?: AgentTodo[];
   layoutUpdate?: LayoutState;
+  // Block-based updates
+  blocksUpdate?: Block[];                   // Blocks that were added or updated
+  blocksRemoved?: string[];                 // Block IDs that were removed
 }
 
 /**

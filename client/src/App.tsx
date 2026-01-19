@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ProjectsPage } from '@/pages/ProjectsPage';
 import { EditorPage } from '@/pages/EditorPage';
+import { BlockEditor } from '@/pages/BlockEditor';
 import { useCanvasActions } from '@/store/canvasStore';
 import { useGenerationActions } from '@/store/generationStore';
 import { useCurrentProject, useProjectActions, type Project } from '@/store/projectStore';
@@ -99,6 +100,11 @@ function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  // New block-based editor
+  if (window.location.pathname === '/editor') {
+    return <BlockEditor onBack={() => window.location.href = '/'} />;
+  }
 
   if (isLoading) {
     return (
