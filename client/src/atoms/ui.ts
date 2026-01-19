@@ -110,6 +110,29 @@ export const canvasZoomAtom = atomWithStorage<number>('canvasZoom', 100);
 canvasZoomAtom.debugLabel = 'canvasZoomAtom';
 
 /**
+ * Canvas viewport for pan/zoom (free-form canvas)
+ */
+export interface CanvasViewport {
+  x: number;     // Pan X offset
+  y: number;     // Pan Y offset
+  zoom: number;  // Zoom level (1 = 100%)
+}
+
+export const canvasViewportAtom = atom<CanvasViewport>({
+  x: 0,
+  y: 0,
+  zoom: 1,
+});
+canvasViewportAtom.debugLabel = 'canvasViewportAtom';
+
+/**
+ * Canvas viewport getter function (for imperative access during drops)
+ * This avoids needing React state during pan/zoom animations
+ */
+export const canvasViewportGetterAtom = atom<(() => CanvasViewport) | null>(null);
+canvasViewportGetterAtom.debugLabel = 'canvasViewportGetterAtom';
+
+/**
  * Canvas iframe reference
  */
 export const canvasIframeAtom = atom<HTMLIFrameElement | null>(null);

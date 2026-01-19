@@ -1,20 +1,20 @@
 /**
  * BlockCanvas - Iframe-based canvas for rendering blocks
- * Provides style isolation and accurate preview
+ * Provides style isolation, pan/zoom, and free-form positioning
  */
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useEffect } from 'react';
 import Frame from 'react-frame-component';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
   blocksAtom,
   selectedBlockIdsAtom,
   canvasIframeAtom,
-  canvasBreakpointAtom,
-  breakpointWidths,
-  canvasZoomAtom,
+  canvasViewportGetterAtom,
   dropIndicatorAtom,
+  draggingBlockAtom,
 } from '../../atoms';
 import { BlockTreeRenderer } from './BlockTreeRenderer';
+import { usePanZoom } from '../../hooks/usePanZoom';
 
 // Initial HTML for the iframe
 const INITIAL_CONTENT = `
@@ -100,8 +100,9 @@ const CanvasContent: React.FC = () => {
 
   return (
     <div
-      className="canvas-content min-h-full relative"
+      className="canvas-content min-h-full"
       onClick={handleCanvasClick}
+      style={{ position: 'relative', minHeight: '100vh' }}
     >
       {/* Drop indicator - rendered inside iframe */}
       {dropIndicator.isVisible && (
@@ -128,16 +129,29 @@ const CanvasContent: React.FC = () => {
 };
 
 /**
- * BlockCanvas - Main canvas component with iframe
+ * BlockCanvas - Main canvas component with iframe and pan/zoom
  */
 export const BlockCanvas: React.FC<BlockCanvasProps> = ({ className = '' }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const setCanvasIframe = useSetAtom(canvasIframeAtom);
-  const breakpoint = useAtomValue(canvasBreakpointAtom);
-  const zoom = useAtomValue(canvasZoomAtom);
+  const setViewportGetter = useSetAtom(canvasViewportGetterAtom);
+  const draggingBlock = useAtomValue(draggingBlockAtom);
+  const isDragging = draggingBlock !== null;
 
-  const width = breakpointWidths[breakpoint];
-  const scale = zoom / 100;
+  // Use the pan/zoom hook - handles all interaction with refs + RAF
+  const {
+    containerRef,
+    contentRef,
+    isPanning,
+    isSpaceHeld,
+    displayZoom,
+    getViewport,
+  } = usePanZoom({ minZoom: 0.25, maxZoom: 2 });
+
+  // Store getViewport in atom for drop position calculations
+  useEffect(() => {
+    setViewportGetter(() => getViewport);
+  }, [getViewport, setViewportGetter]);
 
   // Store iframe ref in atom for external access
   const handleMount = useCallback(() => {
@@ -146,25 +160,49 @@ export const BlockCanvas: React.FC<BlockCanvasProps> = ({ className = '' }) => {
     }
   }, [setCanvasIframe]);
 
+  // Canvas size - make it large for free-form positioning
+  const canvasWidth = 3000;
+  const canvasHeight = 2000;
+
   return (
-    <div className={`relative overflow-auto bg-gray-100 ${className}`}>
+    <div
+      ref={containerRef}
+      className={`relative overflow-hidden bg-gray-100 ${className}`}
+      style={{ cursor: isPanning ? 'grabbing' : isSpaceHeld ? 'grab' : 'default' }}
+    >
+      {/* Zoom indicator */}
+      <div className="absolute top-2 right-2 z-10 bg-white/80 px-2 py-1 rounded text-xs text-gray-600">
+        {Math.round(displayZoom * 100)}%
+      </div>
+
+      {/* Canvas viewport container - transform applied directly by hook */}
       <div
-        className="mx-auto transition-all duration-200 py-4"
+        ref={contentRef}
         style={{
-          width: `${width}px`,
-          transform: `scale(${scale})`,
-          transformOrigin: 'top center',
+          transformOrigin: '0 0',
+          width: canvasWidth,
+          height: canvasHeight,
         }}
       >
         <Frame
           ref={iframeRef}
           initialContent={INITIAL_CONTENT}
           mountTarget=".canvas-root"
-          className="w-full min-h-screen bg-white shadow-lg border-0"
+          className="bg-white shadow-lg border-0"
+          style={{
+            width: canvasWidth,
+            height: canvasHeight,
+            pointerEvents: isDragging || isPanning || isSpaceHeld ? 'none' : 'auto',
+          }}
           contentDidMount={handleMount}
         >
           <CanvasContent />
         </Frame>
+      </div>
+
+      {/* Pan/zoom hint */}
+      <div className="absolute bottom-2 left-2 z-10 text-xs text-gray-500 bg-white/80 px-2 py-1 rounded">
+        Hold Space: drag to pan, scroll to zoom
       </div>
     </div>
   );

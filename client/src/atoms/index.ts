@@ -30,6 +30,8 @@ export {
   canvasBreakpointAtom,
   breakpointWidths,
   canvasZoomAtom,
+  canvasViewportAtom,
+  canvasViewportGetterAtom,
   canvasIframeAtom,
   isDraggingAtom,
   dropTargetAtom,
@@ -44,6 +46,7 @@ export {
   type SidePanel,
   type RightPanel,
   type CanvasBreakpoint,
+  type CanvasViewport,
   type SaveState,
 } from './ui';
 
@@ -56,4 +59,11 @@ export {
 } from './history';
 
 // Drag and drop atoms
-export { draggingBlockAtom, dropIndicatorAtom, type DropIndicatorState } from './dnd';
+export {
+  draggingBlockAtom,
+  canvasDraggingBlockIdAtom,
+  canvasDropIndicatorAtom,
+  dropIndicatorAtom,
+  type DropIndicatorState,
+  type CanvasDropIndicator,
+} from './dnd';
