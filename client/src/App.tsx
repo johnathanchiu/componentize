@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { ProjectsPage } from '@/pages/ProjectsPage';
-import { EditorPage } from '@/pages/EditorPage';
 import { BlockEditor } from '@/pages/BlockEditor';
 import { useCanvasActions } from '@/store/canvasStore';
 import { useGenerationActions } from '@/store/generationStore';
@@ -101,7 +100,7 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // New block-based editor
+  // Direct route to BlockEditor for testing (no project needed)
   if (window.location.pathname === '/editor') {
     return <BlockEditor onBack={() => window.location.href = '/'} />;
   }
@@ -118,7 +117,8 @@ function App() {
     return <ProjectsPage onOpenProject={handleOpenProject} />;
   }
 
-  return <EditorPage project={currentProject} onBack={handleBackToProjects} />;
+  // Free-form canvas BlockEditor is now the default editor
+  return <BlockEditor onBack={handleBackToProjects} />;
 }
 
 export default App;
