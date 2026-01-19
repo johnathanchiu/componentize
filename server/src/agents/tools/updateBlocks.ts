@@ -7,6 +7,8 @@ import type { Block } from '../../../../shared/types';
 interface BlockUpdate {
   _id: string;
   _name?: string;
+  _position?: { x: number; y: number };
+  _size?: { width: number; height: number };
   content?: string;
   styles?: string;
   tag?: string;
@@ -74,6 +76,8 @@ class UpdateBlocksInvocation implements ToolInvocation<UpdateBlocksParams> {
       const cleanUpdate: Record<string, unknown> = { _id: update._id };
 
       if (update._name !== undefined) cleanUpdate._name = update._name;
+      if (update._position !== undefined) cleanUpdate._position = update._position;
+      if (update._size !== undefined) cleanUpdate._size = update._size;
       if (update.content !== undefined) cleanUpdate.content = update.content;
       if (update.styles !== undefined) cleanUpdate.styles = update.styles;
       if (update.tag !== undefined) cleanUpdate.tag = update.tag;
@@ -124,13 +128,20 @@ export class UpdateBlocksTool implements BaseTool {
   name = 'update_blocks';
   description = `Update properties of existing blocks.
 
-Use this to modify block content, styles, or other properties.
+Use this to modify block content, styles, position, size, or other properties.
 Each update requires the block's _id and the properties to change.
 
 Example - Update button text and style:
 update_blocks({
   updates: [
     { _id: "abc123", content: "Click Me!", styles: "bg-blue-600 hover:bg-blue-700" }
+  ]
+})
+
+Example - Move a block to a new position:
+update_blocks({
+  updates: [
+    { _id: "abc123", _position: { x: 200, y: 300 }, _size: { width: 400, height: 200 } }
   ]
 })
 
@@ -158,6 +169,22 @@ update_blocks({
             _name: {
               type: 'string',
               description: 'Update display name',
+            },
+            _position: {
+              type: 'object',
+              description: 'Update position { x, y } on the canvas',
+              properties: {
+                x: { type: 'number', description: 'X coordinate in pixels' },
+                y: { type: 'number', description: 'Y coordinate in pixels' },
+              },
+            },
+            _size: {
+              type: 'object',
+              description: 'Update size { width, height }',
+              properties: {
+                width: { type: 'number', description: 'Width in pixels' },
+                height: { type: 'number', description: 'Height in pixels' },
+              },
             },
             content: {
               type: 'string',

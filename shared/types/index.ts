@@ -7,6 +7,22 @@
 // ============================================================================
 
 /**
+ * Position for free-form canvas layout
+ */
+export interface BlockPosition {
+  x: number;
+  y: number;
+}
+
+/**
+ * Size for blocks with explicit dimensions
+ */
+export interface BlockSize {
+  width: number;
+  height: number;
+}
+
+/**
  * Base block type - all blocks have these internal properties
  * Underscore prefix indicates internal/system properties (chaibuilder convention)
  */
@@ -15,6 +31,8 @@ export interface BaseBlock {
   _type: string;
   _parent: string | null;  // Parent block ID for nesting
   _name?: string;          // Display name in tree view
+  _position?: BlockPosition;  // Free-form canvas position (if absent, uses flow layout)
+  _size?: BlockSize;          // Explicit dimensions (optional)
 }
 
 /**
